@@ -1,0 +1,72 @@
+{
+    "140-110103-01": {
+        "specs": {
+            "throw_ratio": {"min": 0.38, "max": 0.38, "default": 0.38},
+            "lens_shift": {
+                "h_shift_range": [-4.0, 4.0],
+                "v_shift_range": [-12.0, 60.0]
+            },
+            "notes": "Ultra short throw fixed lens for Boxer and Crimson models"
+        }
+    },
+    "140-100102-xx": {
+        "specs": {
+            "throw_ratio": {"min": 1.2, "max": 1.7, "default": 1.45},
+            "lens_shift": {
+                "h_shift_range": [-30.0, 30.0],
+                "v_shift_range": [-100.0, 100.0]
+            },
+            "notes": "Standard zoom lens for 3DLP models"
+        }
+    },
+    "140-107101-xx": {
+        "specs": {
+            "throw_ratio": {"min": 2.0, "max": 3.4, "default": 2.7},
+            "lens_shift": {
+                "h_shift_range": [-30.0, 30.0],
+                "v_shift_range": [-100.0, 100.0]
+            },
+            "notes": "Medium throw zoom lens for 3DLP models"
+        }
+    },
+    "140-102105-xx": {
+        "specs": {
+            "throw_ratio": {"min": 3.3, "max": 5.3, "default": 4.3},
+            "lens_shift": {
+                "h_shift_range": [-30.0, 30.0],
+                "v_shift_range": [-100.0, 100.0]
+            },
+            "notes": "Long throw zoom lens for 3DLP models"
+        }
+    },
+    "140-111104-xx": {
+        "specs": {
+            "throw_ratio": {"min": 0.72, "max": 0.72, "default": 0.72},
+            "lens_shift": {
+                "h_shift_range": [-10.0, 10.0],
+                "v_shift_range": [-50.0, 50.0]
+            },
+            "notes": "Short throw fixed lens for 3DLP models"
+        }
+    },
+    "140-109101-xx": {
+        "specs": {
+            "throw_ratio": {"min": 0.8, "max": 1.0, "default": 0.9},
+            "lens_shift": {
+                "h_shift_range": [-20.0, 20.0],
+                "v_shift_range": [-70.0, 70.0]
+            },
+            "notes": "Short throw zoom lens for 3DLP models"
+        }
+    },
+    "140-104103-xx": {
+        "specs": {
+            "throw_ratio": {"min": 5.3, "max": 8.3, "default": 6.8},
+            "lens_shift": {
+                "h_shift_range": [-30.0, 30.0],
+                "v_shift_range": [-100.0, 100.0]
+            },
+            "notes": "Ultra long throw zoom lens for 3DLP models"
+        }
+    }
+}

@@ -1,0 +1,72 @@
+{
+    "ELPLX01": {
+        "specs": {
+            "throw_ratio": {"min": 0.35, "max": 0.35, "default": 0.35},
+            "lens_shift": {
+                "h_shift_range": [-15.0, 15.0],
+                "v_shift_range": [-60.0, 60.0]
+            },
+            "notes": "Ultra short throw lens for Pro Series"
+        }
+    },
+    "ELPLM15": {
+        "specs": {
+            "throw_ratio": {"min": 1.57, "max": 2.56, "default": 2.0},
+            "lens_shift": {
+                "h_shift_range": [-30.0, 30.0],
+                "v_shift_range": [-67.0, 67.0]
+            },
+            "notes": "Mid-throw zoom lens"
+        }
+    },
+    "ELPLL08": {
+        "specs": {
+            "throw_ratio": {"min": 4.00, "max": 6.10, "default": 5.05},
+            "lens_shift": {
+                "h_shift_range": [-30.0, 30.0],
+                "v_shift_range": [-60.0, 60.0]
+            },
+            "notes": "Long throw zoom lens"
+        }
+    },
+    "ELPLW05": {
+        "specs": {
+            "throw_ratio": {"min": 0.8, "max": 1.05, "default": 0.93},
+            "lens_shift": {
+                "h_shift_range": [-30.0, 30.0],
+                "v_shift_range": [-67.0, 67.0]
+            },
+            "notes": "Wide-angle zoom lens for Pro Series"
+        }
+    },
+    "ELPLM10": {
+        "specs": {
+            "throw_ratio": {"min": 1.04, "max": 1.66, "default": 1.35},
+            "lens_shift": {
+                "h_shift_range": [-30.0, 30.0],
+                "v_shift_range": [-67.0, 67.0]
+            },
+            "notes": "Standard zoom lens for Pro Series"
+        }
+    },
+    "ELPLM11": {
+        "specs": {
+            "throw_ratio": {"min": 2.73, "max": 4.3, "default": 3.52},
+            "lens_shift": {
+                "h_shift_range": [-30.0, 30.0],
+                "v_shift_range": [-67.0, 67.0]
+            },
+            "notes": "Long-throw zoom lens for Pro Series"
+        }
+    },
+    "ELPLU03": {
+        "specs": {
+            "throw_ratio": {"min": 0.48, "max": 0.57, "default": 0.52},
+            "lens_shift": {
+                "h_shift_range": [-10.0, 10.0],
+                "v_shift_range": [-30.0, 30.0]
+            },
+            "notes": "Ultra short throw zoom lens for Pro Series"
+        }
+    }
+}

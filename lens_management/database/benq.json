@@ -1,0 +1,52 @@
+{
+    "LS1ST1": {
+        "specs": {
+            "throw_ratio": {"min": 0.37, "max": 0.37, "default": 0.37},
+            "lens_shift": {
+                "h_shift_range": [0.0, 0.0],
+                "v_shift_range": [0.0, 0.0]
+            },
+            "notes": "Ultra short throw fixed lens for BenQ LU9 Series"
+        }
+    },
+    "LS1SD1": {
+        "specs": {
+            "throw_ratio": {"min": 0.75, "max": 0.95, "default": 0.85},
+            "lens_shift": {
+                "h_shift_range": [-20.0, 20.0],
+                "v_shift_range": [-40.0, 40.0]
+            },
+            "notes": "Short throw zoom lens for BenQ LU9 Series"
+        }
+    },
+    "LS1LT1": {
+        "specs": {
+            "throw_ratio": {"min": 2.22, "max": 3.67, "default": 2.95},
+            "lens_shift": {
+                "h_shift_range": [-30.0, 30.0],
+                "v_shift_range": [-60.0, 60.0]
+            },
+            "notes": "Long throw zoom lens for BenQ LU9 Series"
+        }
+    },
+    "LS1WT1": {
+        "specs": {
+            "throw_ratio": {"min": 0.96, "max": 1.46, "default": 1.21},
+            "lens_shift": {
+                "h_shift_range": [-25.0, 25.0],
+                "v_shift_range": [-50.0, 50.0]
+            },
+            "notes": "Standard zoom lens for BenQ LU9 Series"
+        }
+    },
+    "LS2ST1": {
+        "specs": {
+            "throw_ratio": {"min": 0.33, "max": 0.33, "default": 0.33},
+            "lens_shift": {
+                "h_shift_range": [0.0, 0.0],
+                "v_shift_range": [0.0, 0.0]
+            },
+            "notes": "Ultra short throw fixed lens for BenQ LK Series"
+        }
+    }
+}

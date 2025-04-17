@@ -1,0 +1,72 @@
+{
+    "VPLL-4008": {
+        "specs": {
+            "throw_ratio": {"min": 0.33, "max": 0.33, "default": 0.33},
+            "lens_shift": {
+                "h_shift_range": [0.0, 0.0],
+                "v_shift_range": [0.0, 0.0]
+            },
+            "notes": "Ultra short throw fixed lens"
+        }
+    },
+    "VPLL-Z3009": {
+        "specs": {
+            "throw_ratio": {"min": 0.85, "max": 1.19, "default": 1.02},
+            "lens_shift": {
+                "h_shift_range": [-25.0, 25.0],
+                "v_shift_range": [-65.0, 65.0]
+            },
+            "notes": "Short throw zoom lens"
+        }
+    },
+    "VPLL-Z3024": {
+        "specs": {
+            "throw_ratio": {"min": 2.34, "max": 3.07, "default": 2.71},
+            "lens_shift": {
+                "h_shift_range": [-25.0, 25.0],
+                "v_shift_range": [-65.0, 65.0]
+            },
+            "notes": "Medium throw zoom lens"
+        }
+    },
+    "VPLL-Z3032": {
+        "specs": {
+            "throw_ratio": {"min": 3.18, "max": 4.84, "default": 4.01},
+            "lens_shift": {
+                "h_shift_range": [-25.0, 25.0],
+                "v_shift_range": [-65.0, 65.0]
+            },
+            "notes": "Long throw zoom lens"
+        }
+    },
+    "VPLL-Z3010": {
+        "specs": {
+            "throw_ratio": {"min": 1.18, "max": 1.45, "default": 1.32},
+            "lens_shift": {
+                "h_shift_range": [-25.0, 25.0],
+                "v_shift_range": [-65.0, 65.0]
+            },
+            "notes": "Standard zoom lens for VPL-GTZ series"
+        }
+    },
+    "VPLL-UST1": {
+        "specs": {
+            "throw_ratio": {"min": 0.23, "max": 0.23, "default": 0.23},
+            "lens_shift": {
+                "h_shift_range": [0.0, 0.0],
+                "v_shift_range": [0.0, 0.0]
+            },
+            "notes": "Ultra short throw fixed lens for VPL-FHZ series"
+        }
+    },
+    "VPLL-4013": {
+        "specs": {
+            "throw_ratio": {"min": 1.58, "max": 2.23, "default": 1.9},
+            "lens_shift": {
+                "h_shift_range": [-20.0, 20.0],
+                "v_shift_range": [-55.0, 55.0]
+            },
+            "notes": "Standard zoom lens for VPL-F series"
+        }
+    }
+}

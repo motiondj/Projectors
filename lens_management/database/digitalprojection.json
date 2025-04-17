@@ -1,0 +1,62 @@
+{
+    "112-766": {
+        "specs": {
+            "throw_ratio": {"min": 1.21, "max": 1.7, "default": 1.46},
+            "lens_shift": {
+                "h_shift_range": [-30.0, 30.0],
+                "v_shift_range": [-70.0, 70.0]
+            },
+            "notes": "Standard zoom lens for E-Vision Laser series"
+        }
+    },
+    "112-767": {
+        "specs": {
+            "throw_ratio": {"min": 1.7, "max": 2.37, "default": 2.04},
+            "lens_shift": {
+                "h_shift_range": [-30.0, 30.0],
+                "v_shift_range": [-70.0, 70.0]
+            },
+            "notes": "Medium throw zoom lens for E-Vision Laser series"
+        }
+    },
+    "112-768": {
+        "specs": {
+            "throw_ratio": {"min": 2.37, "max": 3.79, "default": 3.08},
+            "lens_shift": {
+                "h_shift_range": [-30.0, 30.0],
+                "v_shift_range": [-70.0, 70.0]
+            },
+            "notes": "Long throw zoom lens for E-Vision Laser series"
+        }
+    },
+    "112-765": {
+        "specs": {
+            "throw_ratio": {"min": 0.76, "max": 0.98, "default": 0.87},
+            "lens_shift": {
+                "h_shift_range": [-15.0, 15.0],
+                "v_shift_range": [-50.0, 50.0]
+            },
+            "notes": "Short throw zoom lens for E-Vision Laser series"
+        }
+    },
+    "112-769": {
+        "specs": {
+            "throw_ratio": {"min": 3.79, "max": 6.13, "default": 4.96},
+            "lens_shift": {
+                "h_shift_range": [-30.0, 30.0],
+                "v_shift_range": [-70.0, 70.0]
+            },
+            "notes": "Ultra long throw zoom lens for E-Vision Laser series"
+        }
+    },
+    "113-142": {
+        "specs": {
+            "throw_ratio": {"min": 0.38, "max": 0.38, "default": 0.38},
+            "lens_shift": {
+                "h_shift_range": [-10.0, 10.0],
+                "v_shift_range": [-30.0, 30.0]
+            },
+            "notes": "Ultra short throw fixed lens for INSIGHT Laser series"
+        }
+    }
+}

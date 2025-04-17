@@ -1,0 +1,69 @@
+{
+    "R9801711": {
+        "specs": {
+            "throw_ratio": {"min": 0.75, "max": 0.95, "default": 0.85},
+            "lens_shift": {
+                "h_shift_range": [-30.0, 30.0],
+                "v_shift_range": [-70.0, 70.0]
+            }
+        }
+    },
+    "R9801613": {
+        "specs": {
+            "throw_ratio": {"min": 1.2, "max": 1.7, "default": 1.45},
+            "lens_shift": {
+                "h_shift_range": [-30.0, 30.0],
+                "v_shift_range": [-70.0, 70.0]
+            }
+        }
+    },
+    "R9801412": {
+        "specs": {
+            "throw_ratio": {"min": 2.5, "max": 4.0, "default": 3.25},
+            "lens_shift": {
+                "h_shift_range": [-30.0, 30.0],
+                "v_shift_range": [-70.0, 70.0]
+            }
+        }
+    },
+    "R9801410": {
+        "specs": {
+            "throw_ratio": {"min": 1.6, "max": 2.3, "default": 1.95},
+            "lens_shift": {
+                "h_shift_range": [-30.0, 30.0],
+                "v_shift_range": [-70.0, 70.0]
+            },
+            "notes": "Standard zoom lens for UDX and UDM series"
+        }
+    },
+    "R9801414": {
+        "specs": {
+            "throw_ratio": {"min": 4.0, "max": 6.5, "default": 5.25},
+            "lens_shift": {
+                "h_shift_range": [-30.0, 30.0],
+                "v_shift_range": [-70.0, 70.0]
+            },
+            "notes": "Long throw zoom lens for UDX and UDM series"
+        }
+    },
+    "R9801416": {
+        "specs": {
+            "throw_ratio": {"min": 6.5, "max": 10.3, "default": 8.4},
+            "lens_shift": {
+                "h_shift_range": [-30.0, 30.0],
+                "v_shift_range": [-70.0, 70.0]
+            },
+            "notes": "Ultra long throw zoom lens for UDX and UDM series"
+        }
+    },
+    "R9801815": {
+        "specs": {
+            "throw_ratio": {"min": 0.38, "max": 0.38, "default": 0.38},
+            "lens_shift": {
+                "h_shift_range": [-5.0, 5.0],
+                "v_shift_range": [-30.0, 30.0]
+            },
+            "notes": "Ultra short throw fixed lens for UDX series"
+        }
+    }
+}

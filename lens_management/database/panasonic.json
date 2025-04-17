@@ -1,0 +1,75 @@
+{
+    "ET-DLE020": {
+        "specs": {
+            "focal_length": {"min": 4.9, "max": 4.9, "default": 4.9},
+            "throw_ratio": {"min": 0.28, "max": 0.30, "default": 0.29},
+            "f_stop": {"min": 1.8, "max": 1.8, "default": 1.8},
+            "lens_shift": {
+                "h_shift_range": [0.0, 0.0],
+                "v_shift_range": [0.0, 0.0]
+            },
+            "supported_resolutions": ["1920x1200", "3840x2160"],
+            "notes": "Ultra short throw fixed lens"
+        }
+    },
+    "ET-DLE060": {
+        "specs": {
+            "throw_ratio": {"min": 0.6, "max": 0.8, "default": 0.7},
+            "lens_shift": {
+                "h_shift_range": [-10.0, 10.0],
+                "v_shift_range": [-40.0, 40.0]
+            },
+            "notes": "Short throw zoom lens"
+        }
+    },
+    "ET-DLE170": {
+        "specs": {
+            "throw_ratio": {"min": 1.7, "max": 2.4, "default": 2.0},
+            "lens_shift": {
+                "h_shift_range": [-30.0, 30.0],
+                "v_shift_range": [-60.0, 60.0]
+            },
+            "notes": "Standard zoom lens"
+        }
+    },
+    "ET-DLE350": {
+        "specs": {
+            "throw_ratio": {"min": 3.3, "max": 5.2, "default": 4.2},
+            "lens_shift": {
+                "h_shift_range": [-30.0, 30.0],
+                "v_shift_range": [-60.0, 60.0]
+            },
+            "notes": "Long throw zoom lens"
+        }
+    },
+    "ET-DLE085": {
+        "specs": {
+            "throw_ratio": {"min": 0.8, "max": 1.0, "default": 0.9},
+            "lens_shift": {
+                "h_shift_range": [-15.0, 15.0],
+                "v_shift_range": [-40.0, 40.0]
+            },
+            "notes": "Short throw zoom lens for PT-RZ/RQ series"
+        }
+    },
+    "ET-DLE250": {
+        "specs": {
+            "throw_ratio": {"min": 2.3, "max": 3.3, "default": 2.8},
+            "lens_shift": {
+                "h_shift_range": [-30.0, 30.0],
+                "v_shift_range": [-60.0, 60.0]
+            },
+            "notes": "Medium throw zoom lens for PT-RZ/RQ series"
+        }
+    },
+    "ET-DLE450": {
+        "specs": {
+            "throw_ratio": {"min": 5.2, "max": 8.2, "default": 6.7},
+            "lens_shift": {
+                "h_shift_range": [-30.0, 30.0],
+                "v_shift_range": [-60.0, 60.0]
+            },
+            "notes": "Ultra long throw zoom lens for PT-RZ/RQ series"
+        }
+    }
+}
