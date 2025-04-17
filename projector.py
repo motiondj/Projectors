@@ -641,11 +641,38 @@ def init_projector(proj_settings, context):
     if hasattr(context.object, "lens_manager"):
         print("Initializing lens manager...")
         try:
-            context.object.lens_manager.manufacturer = "none"  # "none" 문자열 사용
+            context.object.lens_manager.manufacturer = "none"
         except Exception as e:
             print(f"Error initializing lens manager: {e}")
     else:
         print("lens_manager attribute not found!")
+    
+    # 코너 핀 모듈 초기화 추가
+    try:
+        if hasattr(context.object, "corner_pin"):
+            print("Initializing corner pin settings...")
+            cp = context.object.corner_pin
+            cp.enabled = False
+            cp.top_left = (0.0, 1.0)
+            cp.top_right = (1.0, 1.0)
+            cp.bottom_left = (0.0, 0.0)
+            cp.bottom_right = (1.0, 0.0)
+            cp.preset_name = "Default"
+            
+            # 코너 핀 노드 초기화
+            try:
+                from . import corner_pin
+                corner_pin.nodes.apply_corner_pin_to_projector(context.object)
+            except ImportError:
+                print("Corner pin module not available")
+            except Exception as e:
+                print(f"Error initializing corner pin nodes: {e}")
+                
+            print("Corner pin settings initialized successfully")
+        else:
+            print("Warning: corner_pin attribute not found on projector object")
+    except Exception as e:
+        print(f"Error initializing corner pin: {e}")
 
 
 class PROJECTOR_OT_create_projector(Operator):
@@ -661,6 +688,16 @@ class PROJECTOR_OT_create_projector(Operator):
     def execute(self, context):
         projector = create_projector(context)
         init_projector(projector.proj_settings, context)
+        
+        # 코너 핀 노드 초기화
+        try:
+            from . import corner_pin
+            corner_pin.nodes.apply_corner_pin_to_projector(projector)
+        except ImportError:
+            pass
+        except Exception as e:
+            print(f"Error initializing corner pin: {e}")
+        
         return {'FINISHED'}
 
 

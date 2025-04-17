@@ -1,9 +1,3 @@
-import bpy  
-from . import ui
-from . import projector
-from . import operators
-# 여기서 lens_management 임포트 제거
-
 bl_info = {
     "name": "Projection Simulator",
     "author": "Original: Jonas Schell, Modifications: motiondj",
@@ -16,11 +10,17 @@ bl_info = {
     "tracker_url": ""
 }
 
+import bpy  
+from . import ui
+from . import projector
+from . import operators
+# 여기서 lens_management 임포트 제거
 
 def register():
     projector.register()
     operators.register()
     ui.register()
+    
     # 렌즈 관리 등록
     try:
         print("Attempting to import lens_management...")
@@ -29,7 +29,6 @@ def register():
         lens_management.register()
         
         # 렌즈 오퍼레이터 등록 확인
-        # LENS_OT_force_within_limits 오퍼레이터가 operators.py에 제대로 등록되었는지 확인
         if hasattr(lens_management, 'operators'):
             if not hasattr(bpy.types, 'LENS_OT_force_within_limits'):
                 print("LENS_OT_force_within_limits not registered, attempting to register...")
@@ -41,9 +40,32 @@ def register():
         print("Successfully registered lens_management")
     except Exception as e:
         print(f"Error registering lens_management: {str(e)}")
-
+    
+    # 코너 핀 모듈 등록 추가
+    try:
+        print("Attempting to import corner_pin...")
+        from . import corner_pin
+        print("Successfully imported corner_pin")
+        
+        # 이전에 등록된 경우 먼저 등록 해제
+        try:
+            corner_pin.unregister()
+        except:
+            pass
+        
+        corner_pin.register()
+        print("Successfully registered corner_pin")
+    except Exception as e:
+        print(f"Error registering corner_pin: {str(e)}")
 
 def unregister():
+    # 코너 핀 모듈 등록 해제 추가
+    try:
+        from . import corner_pin
+        corner_pin.unregister()
+    except Exception as e:
+        print(f"Error unregistering corner_pin: {str(e)}")
+    
     from . import lens_management
     lens_management.unregister()
     ui.unregister()

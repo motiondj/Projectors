@@ -142,8 +142,17 @@ def append_to_add_menu(self, context):
 def register():
     bpy.utils.register_class(PROJECTOR_PT_projector_settings)
     bpy.utils.register_class(PROJECTOR_PT_projected_color)
-    # Register create  in the blender add menu.
+    # Register create in the blender add menu.
     bpy.types.VIEW3D_MT_light_add.append(append_to_add_menu)
+    
+    # 코너 핀 UI 연결
+    try:
+        from . import corner_pin
+        corner_pin.panel.register()
+    except ImportError:
+        pass
+    except Exception as e:
+        print(f"Error registering corner pin UI: {e}")
 
 
 def unregister():
