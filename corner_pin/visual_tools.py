@@ -1,4 +1,4 @@
-# corner_pin/visual_tools.py - 시각적 코너 조정 도구
+# corner_pin/visual_tools.py - 수정 버전
 
 import bpy
 import blf
@@ -57,8 +57,16 @@ def draw_callback_px(self, context):
                         (corners['bottom_right'] - corners['bottom_left']) * corner_pin.bottom_right[0]
     }
     
-    # GPU 쉐이더 설정
-    shader = gpu.shader.from_builtin('3D_UNIFORM_COLOR')
+    # GPU 쉐이더 설정 - 블렌더 4.3용으로 수정
+    try:
+        shader = gpu.shader.from_builtin('UNIFORM_COLOR')  # 3D_UNIFORM_COLOR 대신 UNIFORM_COLOR 사용
+    except ValueError:
+        # 오류 발생 시 다른 쉐이더 시도
+        try:
+            shader = gpu.shader.from_builtin('SMOOTH_COLOR')
+        except:
+            print("Cannot find suitable shader")
+            return
     
     # 가이드라인 그리기
     gpu.state.line_width_set(1.0)
@@ -83,7 +91,7 @@ def draw_callback_px(self, context):
     shader.uniform_float("color", (0.2, 0.6, 1.0, 1.0))  # 파란색
     
     # 현재 선택된 코너는 다른 색상으로 표시
-    if self.selected_corner:
+    if hasattr(self, 'selected_corner') and self.selected_corner:
         for corner_name, corner_pos in corners_adjusted.items():
             if corner_name == self.selected_corner:
                 shader.uniform_float("color", (1.0, 0.6, 0.2, 1.0))  # 주황색 (선택됨)
@@ -97,19 +105,23 @@ def draw_callback_px(self, context):
         batch = batch_for_shader(shader, 'POINTS', {"pos": vertices})
         batch.draw(shader)
     
-    # 이름 라벨 표시 (BLF 모듈 사용)
-    font_id = 0  # 기본 폰트
-    blf.size(font_id, 16, 72)
-    
-    for corner_name, corner_pos in corners_adjusted.items():
-        # 3D 좌표를 2D 화면 좌표로 변환
-        region = context.region
-        region_3d = context.space_data.region_3d
-        pos_2d = bpy_extras.view3d_utils.location_3d_to_region_2d(region, region_3d, corner_pos)
+    # 이름 라벨 표시 (BLF 모듈 사용) - 필요시 이 부분도 수정
+    try:
+        font_id = 0  # 기본 폰트
+        blf.size(font_id, 16)
         
-        if pos_2d:
-            blf.position(font_id, pos_2d[0] + 10, pos_2d[1] + 10, 0)
-            blf.draw(font_id, corner_name.replace('_', ' ').title())
+        import bpy_extras.view3d_utils
+        for corner_name, corner_pos in corners_adjusted.items():
+            # 3D 좌표를 2D 화면 좌표로 변환
+            region = context.region
+            region_3d = context.space_data.region_3d
+            pos_2d = bpy_extras.view3d_utils.location_3d_to_region_2d(region, region_3d, corner_pos)
+            
+            if pos_2d:
+                blf.position(font_id, pos_2d[0] + 10, pos_2d[1] + 10, 0)
+                blf.draw(font_id, corner_name.replace('_', ' ').title())
+    except Exception as e:
+        print(f"Error drawing labels: {e}")
 
 class CORNER_PIN_OT_interactive_edit(Operator):
     """대화형 코너 핀 편집 모드"""
@@ -117,16 +129,17 @@ class CORNER_PIN_OT_interactive_edit(Operator):
     bl_label = "Edit Corners Visually"
     bl_options = {'REGISTER', 'UNDO'}
     
+    # 기본값을 'none'으로 설정
     selected_corner: EnumProperty(
         name="Selected Corner",
         items=[
-            ('', "None", ""),
+            ('none', "None", ""),
             ('top_left', "Top Left", ""),
             ('top_right', "Top Right", ""),
             ('bottom_left', "Bottom Left", ""),
             ('bottom_right', "Bottom Right", "")
         ],
-        default=''
+        default='none'
     )
     
     show_guides: BoolProperty(
@@ -150,10 +163,10 @@ class CORNER_PIN_OT_interactive_edit(Operator):
         
         if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
             # 마우스 드래그 종료
-            self.selected_corner = ''
+            self.selected_corner = 'none'  # 빈 문자열 대신 'none' 사용
             return {'RUNNING_MODAL'}
         
-        if event.type == 'MOUSEMOVE' and self.selected_corner:
+        if event.type == 'MOUSEMOVE' and self.selected_corner and self.selected_corner != 'none':
             # 선택된 코너를 마우스 위치로 이동
             self.move_corner(context, event)
             return {'RUNNING_MODAL'}
@@ -171,6 +184,9 @@ class CORNER_PIN_OT_interactive_edit(Operator):
             self.report({'WARNING'}, "No active projector with enabled corner pin")
             return {'CANCELLED'}
         
+        # 초기 선택 코너 설정
+        self.selected_corner = 'none'
+        
         # 그리기 핸들러 등록
         args = (self, context)
         self._handle = bpy.types.SpaceView3D.draw_handler_add(draw_callback_px, args, 'WINDOW', 'POST_VIEW')
@@ -181,16 +197,23 @@ class CORNER_PIN_OT_interactive_edit(Operator):
     
     def find_closest_corner(self, context, event):
         """마우스 위치에서 가장 가까운 코너 찾기"""
-        # (이 함수에 위치 비교 로직 구현)
-        return 'top_left'  # 임시 예제
+        # 실제 구현을 위해서는 더 많은 코드가 필요하지만, 간단한 예로
+        return 'top_left'  
     
     def move_corner(self, context, event):
         """선택된 코너를 마우스 위치로 이동"""
-        # (이 함수에 코너 위치 계산 및 업데이트 로직 구현)
+        # 실제 구현을 위해서는 더 많은 코드가 필요
         pass
 
 def register():
-    bpy.utils.register_class(CORNER_PIN_OT_interactive_edit)
+    try:
+        bpy.utils.register_class(CORNER_PIN_OT_interactive_edit)
+        print("Visual tools registered")
+    except Exception as e:
+        print(f"Error registering visual tools: {e}")
 
 def unregister():
-    bpy.utils.unregister_class(CORNER_PIN_OT_interactive_edit)
+    try:
+        bpy.utils.unregister_class(CORNER_PIN_OT_interactive_edit)
+    except Exception as e:
+        print(f"Error unregistering visual tools: {e}")

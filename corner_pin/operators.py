@@ -206,6 +206,124 @@ class CORNER_PIN_OT_delete_preset(Operator):
         self.report({'ERROR'}, f"Preset '{self.preset_name}' not found")
         return {'CANCELLED'}
 
+# corner_pin/operators.py에 새 클래스 추가
+
+class CORNER_PIN_OT_test_effect(bpy.types.Operator):
+    """테스트 효과 적용"""
+    bl_idname = "corner_pin.test_effect"
+    bl_label = "Apply Test Effect"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    @classmethod
+    def poll(cls, context):
+        return context.active_object and context.active_object.type == 'CAMERA'
+    
+    def execute(self, context):
+        obj = context.active_object
+        if not obj or obj.type != 'CAMERA':
+            self.report({'ERROR'}, "No camera selected")
+            return {'CANCELLED'}
+        
+        # 자식 스팟라이트 찾기
+        spot = None
+        for child in obj.children:
+            if child.type == 'LIGHT' and child.data.type == 'SPOT':
+                spot = child
+                break
+        
+        if not spot:
+            self.report({'ERROR'}, "No spotlight child found")
+            return {'CANCELLED'}
+        
+        # 노드 트리 확인
+        if not spot.data.node_tree:
+            self.report({'ERROR'}, "No node tree in spotlight")
+            return {'CANCELLED'}
+        
+        node_tree = spot.data.node_tree
+        
+        # Group 노드 찾기
+        group_node = None
+        for node in node_tree.nodes:
+            if node.name == 'Group':
+                group_node = node
+                break
+                
+        if not group_node:
+            self.report({'ERROR'}, "Group node not found")
+            return {'CANCELLED'}
+        
+        # Image Texture 노드 찾기
+        image_node = None
+        for node in node_tree.nodes:
+            if node.name == 'Image Texture':
+                image_node = node
+                break
+                
+        # 이미 코너 핀 노드가 있는지 확인
+        corner_pin_node = node_tree.nodes.get('Corner Pin')
+        if not corner_pin_node:
+            self.report({'INFO'}, "Creating new Corner Pin node")
+            corner_pin_node = node_tree.nodes.new('ShaderNodeGroup')
+            corner_pin_node.name = 'Corner Pin'
+            
+            if 'CornerPinCorrection' in bpy.data.node_groups:
+                corner_pin_node.node_tree = bpy.data.node_groups['CornerPinCorrection']
+            else:
+                from . import nodes
+                nodes.create_corner_pin_node_group()
+                corner_pin_node.node_tree = bpy.data.node_groups['CornerPinCorrection']
+        
+        # 텍스처 벡터 연결 시도
+        texture_vector = None
+        for output in group_node.outputs:
+            if output.name == 'texture vector':
+                texture_vector = output
+                break
+                
+        if texture_vector and image_node:
+            # 기존 연결 찾기
+            existing_links = []
+            for link in node_tree.links:
+                if link.from_node == group_node and link.from_socket == texture_vector:
+                    existing_links.append(link)
+            
+            # 기존 연결 제거
+            for link in existing_links:
+                node_tree.links.remove(link)
+            
+            # 노드 위치 설정
+            corner_pin_node.location = (
+                (group_node.location[0] + image_node.location[0]) / 2,
+                group_node.location[1] - 200
+            )
+            
+            # 새 연결 생성
+            node_tree.links.new(texture_vector, corner_pin_node.inputs[0])
+            node_tree.links.new(corner_pin_node.outputs[0], image_node.inputs[0])
+            
+            self.report({'INFO'}, "Successfully connected corner pin node")
+            
+            # 코너 핀 설정 적용
+            if hasattr(obj, 'corner_pin'):
+                cp = obj.corner_pin
+                try:
+                    # 코너 위치 업데이트 - 극단적인 값으로 설정하여 변화가 눈에 띄게 함
+                    if cp.enabled:
+                        corner_pin_node.inputs[1].default_value = (0.2, 1.0, 0.0)  # Top Left
+                        corner_pin_node.inputs[2].default_value = (0.8, 1.0, 0.0)  # Top Right
+                        corner_pin_node.inputs[3].default_value = (0.0, 0.0, 0.0)  # Bottom Left
+                        corner_pin_node.inputs[4].default_value = (1.0, 0.0, 0.0)  # Bottom Right
+                    else:
+                        self.report({'WARNING'}, "Corner pin is not enabled")
+                except Exception as e:
+                    self.report({'ERROR'}, f"Error setting corner values: {e}")
+        else:
+            self.report({'ERROR'}, "Texture vector or Image Texture node not found")
+            return {'CANCELLED'}
+        
+        return {'FINISHED'}
+
 def register():
     bpy.utils.register_class(CORNER_PIN_OT_reset)
     bpy.utils.register_class(CORNER_PIN_OT_adjust_corner)
@@ -213,6 +331,7 @@ def register():
     bpy.utils.register_class(CORNER_PIN_OT_save_preset)
     bpy.utils.register_class(CORNER_PIN_OT_load_preset)
     bpy.utils.register_class(CORNER_PIN_OT_delete_preset)
+    bpy.utils.register_class(CORNER_PIN_OT_test_effect)  # 새로 추가
     print("Corner Pin operators registered")
 
 def unregister():

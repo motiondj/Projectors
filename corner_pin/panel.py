@@ -83,9 +83,16 @@ class CORNER_PIN_PT_panel(Panel):
             op.corner = corner
             op.delta = (0.0, 0.01)
         
+        # 리셋 버튼 윗부분에 추가
+        row = box.row()
+        row.operator("corner_pin.test_effect", text="Test Corner Pin", icon='NODE_MATERIAL')
+        
         # 리셋 버튼
         row = box.row()
         row.operator("corner_pin.reset", text="Reset Corners", icon='LOOP_BACK')
+        
+        # 테스트 버튼
+        box.operator("corner_pin.test_effect", text="Test Node Manipulation", icon='SHADERFX')
         
         # 프리셋 섹션
         box = layout.box()
