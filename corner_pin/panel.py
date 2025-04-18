@@ -13,14 +13,19 @@ class CORNER_PIN_PT_panel(Panel):
     
     @classmethod
     def poll(cls, context):
-        print("CORNER_PIN_PT_panel.poll() called")
         obj = context.active_object
-        result = obj and obj.type == 'CAMERA' and hasattr(obj, 'corner_pin')
-        print(f"  - obj: {obj}")
-        print(f"  - is camera: {obj and obj.type == 'CAMERA'}")
-        print(f"  - has corner_pin: {obj and hasattr(obj, 'corner_pin')}")
-        print(f"  - poll result: {result}")
-        return result
+        
+        # 기본 조건: 객체가 카메라이고 corner_pin 속성을 가지고 있어야 함
+        basic_condition = obj and obj.type == 'CAMERA' and hasattr(obj, 'corner_pin')
+        
+        if not basic_condition:
+            return False
+        
+        # Custom Texture가 선택된 경우만 패널 표시
+        if hasattr(obj, 'proj_settings') and obj.proj_settings.projected_texture == 'custom_texture':
+            return True
+        
+        return False
     
     def draw(self, context):
         print("CORNER_PIN_PT_panel.draw() called")
