@@ -14,7 +14,6 @@ import bpy
 from . import ui
 from . import projector
 from . import operators
-# 여기서 lens_management 임포트 제거
 
 def register():
     projector.register()
@@ -66,8 +65,12 @@ def unregister():
     except Exception as e:
         print(f"Error unregistering corner_pin: {str(e)}")
     
-    from . import lens_management
-    lens_management.unregister()
+    try:
+        from . import lens_management
+        lens_management.unregister()
+    except Exception as e:
+        print(f"Error unregistering lens_management: {str(e)}")
+        
     ui.unregister()
     operators.unregister()
     projector.unregister()

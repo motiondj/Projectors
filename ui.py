@@ -148,11 +148,12 @@ def register():
     # 코너 핀 UI 연결
     try:
         from . import corner_pin
-        corner_pin.panel.register()
+        # corner_pin.panel.register()  # 이 부분은 제거 - corner_pin 모듈 자체에서 패널 등록
+        print("Corner Pin UI connected")
     except ImportError:
-        pass
+        print("Corner Pin module not found")
     except Exception as e:
-        print(f"Error registering corner pin UI: {e}")
+        print(f"Error connecting corner pin UI: {e}")
 
 
 def unregister():

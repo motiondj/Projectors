@@ -1,4 +1,4 @@
-# corner_pin/panel.py 개선 버전
+# corner_pin/panel.py UI 개선
 
 import bpy
 from bpy.types import Panel
@@ -13,10 +13,17 @@ class CORNER_PIN_PT_panel(Panel):
     
     @classmethod
     def poll(cls, context):
+        print("CORNER_PIN_PT_panel.poll() called")
         obj = context.active_object
-        return obj and obj.type == 'CAMERA' and hasattr(obj, 'corner_pin')
+        result = obj and obj.type == 'CAMERA' and hasattr(obj, 'corner_pin')
+        print(f"  - obj: {obj}")
+        print(f"  - is camera: {obj and obj.type == 'CAMERA'}")
+        print(f"  - has corner_pin: {obj and hasattr(obj, 'corner_pin')}")
+        print(f"  - poll result: {result}")
+        return result
     
     def draw(self, context):
+        print("CORNER_PIN_PT_panel.draw() called")
         layout = self.layout
         layout.use_property_split = True
         layout.use_property_decorate = False
@@ -24,22 +31,32 @@ class CORNER_PIN_PT_panel(Panel):
         obj = context.active_object
         if not obj or not hasattr(obj, 'corner_pin'):
             layout.label(text="No projector selected")
+            print("  - No projector with corner_pin attribute")
             return
         
+        print(f"  - Drawing for object: {obj.name}")
         corner_pin = obj.corner_pin
         
         # 활성화 토글
-        layout.prop(corner_pin, "enabled", text="Enable Corner Pin")
+        row = layout.row()
+        row.prop(corner_pin, "enabled", text="Enable Corner Pin")
         
         if not corner_pin.enabled:
+            print("  - Corner pin is disabled")
+            # 테스트 버튼은 항상 표시
+            layout.operator("corner_pin.test_effect", text="Test Corner Pin", icon='NODE_MATERIAL')
             return
+        
+        print("  - Corner pin is enabled, drawing controls")
+        
+        # 테스트 버튼 (항상 맨 위에 표시)
+        box = layout.box()
+        box.alert = True  # 눈에 띄게 강조
+        box.operator("corner_pin.test_effect", text="Test Corner Pin Effect", icon='NODE_MATERIAL')
         
         # 코너 위치 컨트롤
         box = layout.box()
         box.label(text="Corner Positions", icon='MESH_GRID')
-        
-        # 시각적 편집 모드 버튼
-        box.operator("corner_pin.interactive_edit", text="Interactive Edit Mode", icon='RESTRICT_SELECT_OFF')
         
         # 코너 좌표 숫자 입력
         col = box.column(align=True)
@@ -55,44 +72,45 @@ class CORNER_PIN_PT_panel(Panel):
         right_col.prop(corner_pin, "top_right", text="Top Right")
         right_col.prop(corner_pin, "bottom_right", text="Bottom Right")
         
-        # 미세 조정 버튼
-        box.label(text="Fine Adjustment", icon='ARROW_LEFTRIGHT')
-        grid = box.grid_flow(row_major=True, columns=2, even_columns=True)
-        
-        for corner in ['top_left', 'top_right', 'bottom_left', 'bottom_right']:
-            col = grid.column(align=True)
-            col.label(text=corner.replace('_', ' ').title())
-            
-            row = col.row(align=True)
-            # X 축 조정
-            op = row.operator("corner_pin.adjust_corner", text="X-")
-            op.corner = corner
-            op.delta = (-0.01, 0.0)
-            
-            op = row.operator("corner_pin.adjust_corner", text="X+")
-            op.corner = corner
-            op.delta = (0.01, 0.0)
-            
-            row = col.row(align=True)
-            # Y 축 조정
-            op = row.operator("corner_pin.adjust_corner", text="Y-")
-            op.corner = corner
-            op.delta = (0.0, -0.01)
-            
-            op = row.operator("corner_pin.adjust_corner", text="Y+")
-            op.corner = corner
-            op.delta = (0.0, 0.01)
-        
-        # 리셋 버튼 윗부분에 추가
-        row = box.row()
-        row.operator("corner_pin.test_effect", text="Test Corner Pin", icon='NODE_MATERIAL')
-        
         # 리셋 버튼
         row = box.row()
-        row.operator("corner_pin.reset", text="Reset Corners", icon='LOOP_BACK')
+        row.operator("corner_pin.reset", text="Reset to Default", icon='LOOP_BACK')
         
-        # 테스트 버튼
-        box.operator("corner_pin.test_effect", text="Test Node Manipulation", icon='SHADERFX')
+        # 미세 조정 섹션
+        box = layout.box()
+        box.label(text="Fine Adjustment", icon='ARROW_LEFTRIGHT')
+        
+        # 코너 선택 및 미세 조정 UI
+        row = box.row()
+        col = row.column(align=True)
+        
+        # 각 코너에 대한 미세 조정 버튼
+        for corner_name, corner_label in [
+            ('top_left', 'Top Left'), 
+            ('top_right', 'Top Right'), 
+            ('bottom_left', 'Bottom Left'), 
+            ('bottom_right', 'Bottom Right')
+        ]:
+            box.label(text=corner_label)
+            row = box.row(align=True)
+            
+            # X축 조정
+            op = row.operator("corner_pin.adjust_corner", text="X -", icon='TRIA_LEFT')
+            op.corner = corner_name
+            op.delta = (-0.01, 0.0)
+            
+            op = row.operator("corner_pin.adjust_corner", text="X +", icon='TRIA_RIGHT')
+            op.corner = corner_name
+            op.delta = (0.01, 0.0)
+            
+            # Y축 조정
+            op = row.operator("corner_pin.adjust_corner", text="Y -", icon='TRIA_DOWN')
+            op.corner = corner_name
+            op.delta = (0.0, -0.01)
+            
+            op = row.operator("corner_pin.adjust_corner", text="Y +", icon='TRIA_UP')
+            op.corner = corner_name
+            op.delta = (0.0, 0.01)
         
         # 프리셋 섹션
         box = layout.box()
@@ -115,20 +133,36 @@ class CORNER_PIN_PT_panel(Panel):
                 row.operator("corner_pin.delete_preset", text="Delete", icon='X').preset_name = preset.name
         else:
             box.label(text="No presets saved yet")
+        
+        # 시각적 편집 모드 버튼 (하단에 배치)
+        layout.separator()
+        layout.operator("corner_pin.interactive_edit", text="Interactive Edit Mode", icon='RESTRICT_SELECT_OFF')
 
 def register():
+    print("corner_pin.panel.register() called")
     try:
-        # 이미 등록된 경우 먼저 등록 해제
+        # 이미 등록된 경우 먼저 등록 해제 시도
         if hasattr(bpy.types, 'CORNER_PIN_PT_panel'):
-            unregister()
+            print("CORNER_PIN_PT_panel already registered, unregistering first")
+            try:
+                bpy.utils.unregister_class(CORNER_PIN_PT_panel)
+                print("Successfully unregistered CORNER_PIN_PT_panel")
+            except Exception as e:
+                print(f"Failed to unregister CORNER_PIN_PT_panel: {e}")
         
+        # 등록
         bpy.utils.register_class(CORNER_PIN_PT_panel)
-        print("Corner Pin panel registered")
+        print("Successfully registered CORNER_PIN_PT_panel")
     except Exception as e:
         print(f"Error registering Corner Pin panel: {e}")
 
 def unregister():
+    print("corner_pin.panel.unregister() called")
     try:
-        bpy.utils.unregister_class(CORNER_PIN_PT_panel)
+        if hasattr(bpy.types, 'CORNER_PIN_PT_panel'):
+            bpy.utils.unregister_class(CORNER_PIN_PT_panel)
+            print("Successfully unregistered CORNER_PIN_PT_panel")
+        else:
+            print("CORNER_PIN_PT_panel not registered, nothing to unregister")
     except Exception as e:
         print(f"Error unregistering Corner Pin panel: {e}")

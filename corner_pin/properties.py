@@ -5,10 +5,13 @@ from bpy.props import FloatVectorProperty, BoolProperty, PointerProperty, String
 
 def update_corner_pin(self, context):
     """코너 핀 설정 변경 시 노드 업데이트"""
+    print(f"update_corner_pin called: {self}")
     obj = context.active_object
     if not obj or not hasattr(obj, 'corner_pin'):
+        print("No active object with corner_pin attribute")
         return
     
+    print(f"Updating corner pin nodes for {obj.name}")
     from . import nodes
     nodes.update_corner_pin_nodes(obj)
 
@@ -74,11 +77,46 @@ class CornerPinProperties(bpy.types.PropertyGroup):
     )
 
 def register():
-    bpy.utils.register_class(CornerPinProperties)
-    # 프로젝터 객체에 corner_pin 속성 추가
-    bpy.types.Object.corner_pin = PointerProperty(type=CornerPinProperties)
-    print("Corner Pin properties registered")
+    print("corner_pin.properties.register() called")
+    try:
+        # 이미 등록된 경우 먼저 등록 해제
+        if hasattr(bpy.types, 'CornerPinProperties'):
+            print("CornerPinProperties already registered, unregistering first")
+            try:
+                bpy.utils.unregister_class(CornerPinProperties)
+                print("Successfully unregistered CornerPinProperties")
+            except Exception as e:
+                print(f"Failed to unregister CornerPinProperties: {e}")
+        
+        # 등록
+        bpy.utils.register_class(CornerPinProperties)
+        print("Successfully registered CornerPinProperties")
+        
+        # 프로퍼티 등록
+        if not hasattr(bpy.types.Object, 'corner_pin'):
+            print("Registering corner_pin property on Object")
+            bpy.types.Object.corner_pin = PointerProperty(type=CornerPinProperties)
+            print("Successfully registered corner_pin property")
+        else:
+            print("corner_pin property already registered on Object")
+    except Exception as e:
+        print(f"Error registering Corner Pin properties: {e}")
 
 def unregister():
-    del bpy.types.Object.corner_pin
-    bpy.utils.unregister_class(CornerPinProperties)
+    print("corner_pin.properties.unregister() called")
+    try:
+        if hasattr(bpy.types.Object, 'corner_pin'):
+            print("Unregistering corner_pin property")
+            del bpy.types.Object.corner_pin
+            print("Successfully unregistered corner_pin property")
+        else:
+            print("corner_pin property not found on Object")
+        
+        if hasattr(bpy.types, 'CornerPinProperties'):
+            print("Unregistering CornerPinProperties")
+            bpy.utils.unregister_class(CornerPinProperties)
+            print("Successfully unregistered CornerPinProperties")
+        else:
+            print("CornerPinProperties not registered")
+    except Exception as e:
+        print(f"Error unregistering Corner Pin properties: {e}")
