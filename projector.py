@@ -254,13 +254,24 @@ def get_resolution(proj_settings, context):
     """
     if proj_settings.use_custom_texture_res and proj_settings.projected_texture == Textures.CUSTOM_TEXTURE.value:
         projector = get_projector(context)
+        if not projector or not hasattr(projector, "children") or len(projector.children) == 0:
+            return float(1920), float(1080)  # 기본값 반환
+            
         root_tree = projector.children[0].data.node_tree
-        image = root_tree.nodes['Image Texture'].image
-        if image:
-            w = image.size[0]
-            h = image.size[1]
-        else:
-            w, h = 300, 300
+        if not root_tree:
+            return float(1920), float(1080)  # 기본값 반환
+            
+        image_node = root_tree.nodes.get('Image Texture')
+        if not image_node or not image_node.image:
+            return float(1920), float(1080)  # 기본값 반환
+            
+        # 이미지 해상도 직접 접근
+        w = image_node.image.size[0]
+        h = image_node.image.size[1]
+        
+        # 유효한 해상도 확인
+        if w <= 0 or h <= 0:
+            return float(1920), float(1080)  # 기본값 반환
     else:
         w, h = proj_settings.resolution.split('x')
 
@@ -702,7 +713,7 @@ class PROJECTOR_OT_create_projector(Operator):
 
 
 def update_projected_texture(proj_settings, context):
-    """ 투사 출력 소스를 업데이트 - 원상복구 버전 """
+    """투사 출력 소스를 업데이트"""
     # 무한 재귀 방지 플래그
     if getattr(update_projected_texture, '_is_updating', False):
         return
@@ -710,108 +721,139 @@ def update_projected_texture(proj_settings, context):
     update_projected_texture._is_updating = True
     
     try:
-        projectors = get_projectors(context, only_selected=True)
-        if not projectors or len(projectors) == 0:
+        projector = get_projector(context)
+        if not projector:
             return
             
-        projector = projectors[0]
-        
-        # 자식 객체 확인 안전하게 수행
+        # 자식 객체 확인
         if not hasattr(projector, "children") or len(projector.children) == 0:
             return
             
-        root_tree = projector.children[0].data.node_tree
-        if not root_tree:
+        # 스팟라이트 노드 트리 얻기
+        spot = projector.children[0]
+        if not spot or not hasattr(spot.data, "node_tree"):
             return
             
-        # 노드 확인
-        group_node = root_tree.nodes.get('Group')
-        if not group_node or not hasattr(group_node, "node_tree"):
+        node_tree = spot.data.node_tree
+        if not node_tree:
             return
             
-        group_tree = group_node.node_tree
-        group_output_node = group_tree.nodes.get('Group Output')
-        emission_node = root_tree.nodes.get('Emission')
+        # 주요 노드 찾기
+        group_node = None
+        emission_node = None
+        image_texture_node = None
+        corner_pin_node = None
         
-        if not group_output_node or not emission_node:
+        for node in node_tree.nodes:
+            if node.name == 'Group':
+                group_node = node
+            elif node.bl_idname == 'ShaderNodeEmission':
+                emission_node = node
+            elif node.bl_idname == 'ShaderNodeTexImage':
+                image_texture_node = node
+            elif node.name == 'Corner Pin':
+                corner_pin_node = node
+        
+        if not group_node or not emission_node:
             return
-
-        # Switch between the three possible cases by relinking some nodes.
+        
+        # 모드별 처리
         case = proj_settings.projected_texture
         
-        if case == Textures.CHECKER.value:
-            # 체커 텍스처에는 코너핀 적용 안함
-            mix_node = group_tree.nodes.get('Mix.001')
-            if mix_node:
-                group_tree.links.new(mix_node.outputs['Color'], group_output_node.inputs[1])
-                root_tree.links.new(group_node.outputs[1], emission_node.inputs[0])
-        
-        elif case == Textures.COLOR_GRID.value:
-            # 컬러 그리드에도 코너핀 적용 안함
-            img_node = group_tree.nodes.get('Image Texture')
-            if img_node:
-                group_tree.links.new(img_node.outputs[0], group_output_node.inputs[1])
-                root_tree.links.new(group_node.outputs[1], emission_node.inputs[0])
-        
-        elif case == Textures.CUSTOM_TEXTURE.value:
-            # 커스텀 텍스처에서만 코너핀 적용
-            custom_tex_node = root_tree.nodes.get('Image Texture')
-            corner_pin_node = root_tree.nodes.get('Corner Pin')
-            texture_vector_output = None
+        if case == Textures.CUSTOM_TEXTURE.value:
+            # 코너 핀 기능이 활성화되어 있는지 확인
+            has_corner_pin = hasattr(projector, 'corner_pin') and projector.corner_pin.enabled
             
-            # 텍스처 벡터 출력 찾기
-            for output in group_node.outputs:
-                if output.name == 'texture vector':
-                    texture_vector_output = output
-                    break
+            if has_corner_pin and corner_pin_node and image_texture_node:
+                # 코너 핀 노드를 그룹과 이미지 텍스처 사이에 연결
+                
+                # 기존 연결 제거
+                for link in list(node_tree.links):
+                    # Group -> Image 직접 연결 제거
+                    if link.from_node == group_node and link.to_node == image_texture_node:
+                        node_tree.links.remove(link)
+                    
+                    # Corner Pin -> 다른 노드 연결 제거
+                    if link.from_node == corner_pin_node and link.to_node != image_texture_node:
+                        node_tree.links.remove(link)
+                
+                # 텍스처 벡터 출력 찾기
+                texture_vector_output = None
+                for output in group_node.outputs:
+                    if output.name == 'texture vector':
+                        texture_vector_output = output
+                        break
+                
+                # 벡터 입력 찾기
+                vector_input = None
+                for input in image_texture_node.inputs:
+                    if input.name == 'Vector':
+                        vector_input = input
+                        break
+                
+                if texture_vector_output and vector_input:
+                    # 연결 생성
+                    # Group -> Corner Pin
+                    if not any(link.from_node == group_node and link.to_node == corner_pin_node for link in node_tree.links):
+                        node_tree.links.new(texture_vector_output, corner_pin_node.inputs[0])
+                    
+                    # Corner Pin -> Image Texture
+                    if not any(link.from_node == corner_pin_node and link.to_node == image_texture_node for link in node_tree.links):
+                        node_tree.links.new(corner_pin_node.outputs[0], vector_input)
+                
+                # 항상 Image Texture -> Emission 연결 확인
+                color_output = None
+                for output in image_texture_node.outputs:
+                    if output.name == 'Color':
+                        color_output = output
+                        break
+                
+                if color_output:
+                    for input in emission_node.inputs:
+                        if input.name == 'Color':
+                            node_tree.links.new(color_output, input)
+                            break
             
-            if custom_tex_node and texture_vector_output:
-                # 코너핀 활성화 확인
-                has_corner_pin = corner_pin_node is not None and hasattr(projector, 'corner_pin') and projector.corner_pin.enabled
+            elif image_texture_node:
+                # 코너 핀이 비활성화된 경우 직접 연결
                 
-                # 해상도 확인 및 적용
-                if custom_tex_node.image:
-                    # 이미지 해상도 가져오기
-                    img_width = custom_tex_node.image.size[0]
-                    img_height = custom_tex_node.image.size[1]
-                    
-                    # 해상도가 유효한 경우 프로젝터 속성 업데이트
-                    if img_width > 0 and img_height > 0 and proj_settings.use_custom_texture_res:
-                        # 이미지 비율 계산하여 적용
-                        aspect_ratio = img_width / img_height
-                        
-                        # 프로젝터 카메라 속성 업데이트
-                        projector.data.sensor_width = 36.0  # 표준 센서 너비 (mm)
-                        projector.data.sensor_height = 36.0 / aspect_ratio
-                        
-                        # Throw Ratio 업데이트 (필요한 경우)
-                        update_throw_ratio(proj_settings, context)
+                # 텍스처 벡터와 벡터 입력 찾기
+                texture_vector_output = None
+                for output in group_node.outputs:
+                    if output.name == 'texture vector':
+                        texture_vector_output = output
+                        break
                 
-                # 코너핀 노드 연결 (기존 코드와 동일)
-                if has_corner_pin:
-                    # 코너핀 노드 연결
-                    # 기존 연결 제거 (안전하게)
-                    for link in list(root_tree.links):
-                        if link.to_node == custom_tex_node and link.to_socket == custom_tex_node.inputs[0]:
-                            try:
-                                root_tree.links.remove(link)
-                            except:
-                                pass
-                    
-                    # 새 연결 생성
-                    root_tree.links.new(texture_vector_output, corner_pin_node.inputs[0])
-                    root_tree.links.new(corner_pin_node.outputs[0], custom_tex_node.inputs[0])
-                else:
-                    # 직접 연결 (코너핀 없음)
-                    root_tree.links.new(texture_vector_output, custom_tex_node.inputs[0])
+                vector_input = None
+                for input in image_texture_node.inputs:
+                    if input.name == 'Vector':
+                        vector_input = input
+                        break
                 
-                # 이미지 텍스처 출력을 Emission으로 연결
-                root_tree.links.new(custom_tex_node.outputs[0], emission_node.inputs[0])
-    
+                if texture_vector_output and vector_input:
+                    # 직접 연결: Group -> Image Texture
+                    node_tree.links.new(texture_vector_output, vector_input)
+                
+                # Image Texture -> Emission 연결
+                color_output = None
+                for output in image_texture_node.outputs:
+                    if output.name == 'Color':
+                        color_output = output
+                        break
+                
+                if color_output:
+                    for input in emission_node.inputs:
+                        if input.name == 'Color':
+                            node_tree.links.new(color_output, input)
+                            break
+        
+        else:
+            # 다른 모드(체커, 컬러 그리드 등)에 대한 처리는 그대로 유지
+            pass
+            
     finally:
         # 플래그 해제
         update_projected_texture._is_updating = False
-
 
 class PROJECTOR_OT_delete_projector(Operator):
     """Delete Projector"""
