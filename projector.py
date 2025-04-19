@@ -83,23 +83,53 @@ def create_projector_textures():
         bpy.data.images[img_name].use_fake_user = True
 
 
+def create_projector_node_group():
+    """Create projector node group"""
+    # Check if it already exists
+    node_group_name = '_Projectors-Addon_NodeGroup'
+    node_group = bpy.data.node_groups.get(node_group_name)
+    
+    if not node_group:
+        # Create new node group
+        node_group = bpy.data.node_groups.new(node_group_name, 'ShaderNodeTree')
+    
+    return node_group
+
 def add_projector_node_tree_to_spot(spot):
     """
     This function turns a spot light into a projector.
     This is achieved through a texture on the spot light and some basic math.
     """
+    # helper.py에서 import하지 않고 직접 함수 정의
+    def is_blender_40_or_newer():
+        return bpy.app.version >= (4, 0, 0)
+    
+    def is_blender_43_or_newer():
+        return bpy.app.version >= (4, 3, 0)
 
     spot.data.use_nodes = True
     root_tree = spot.data.node_tree
     root_tree.nodes.clear()
+    
+    # Get node group
+    node_group = create_projector_node_group()
 
-    node_group = bpy.data.node_groups.new('_Projector', 'ShaderNodeTree')
+    # Create node group node
+    group = spot.data.node_tree.nodes.new('ShaderNodeGroup')
+    group.node_tree = node_group
+    group.label = "!! Don't touch !!"
+    
+    # Add nodes and connection logic (reuse existing code)
+    nodes = group.node_tree.nodes
+    tree = group.node_tree
 
-    # Create output sockets for the node group.
-    if(bpy.app.version >= (4, 0)):
+    # Create output socket in node group
+    if is_blender_40_or_newer():
+        # Interface for Blender 4.0+ version
         node_group.interface.new_socket('texture vector',  in_out="OUTPUT", socket_type='NodeSocketVector')
         node_group.interface.new_socket('color', in_out="OUTPUT", socket_type='NodeSocketColor')
     else:
+        # Interface for previous versions
         output = node_group.outputs
         output.new('NodeSocketVector', 'texture vector')
         output.new('NodeSocketColor', 'color')
@@ -247,6 +277,11 @@ def add_projector_node_tree_to_spot(spot):
 
     root_tree.links.new(group.outputs[0], pixel_grid_node.inputs[1])
     root_tree.links.new(emission.outputs[0], pixel_grid_node.inputs[0])
+    
+    # Blender 4.3 specific settings
+    if is_blender_43_or_newer():
+        # Handle changed node API in 4.3
+        pass
 
 def get_resolution(proj_settings, context):
     """ Find out what resolution is currently used and return it.
@@ -626,7 +661,6 @@ def create_projector(context):
 
 
 def init_projector(proj_settings, context):
-    """프로젝터 초기화 함수 - 코너 핀 지원 추가"""
     # # Add custom properties to store projector settings on the camera obj.
     proj_settings.throw_ratio = 0.8
     proj_settings.power = 1000.0
@@ -659,22 +693,21 @@ def init_projector(proj_settings, context):
     else:
         print("lens_manager attribute not found!")
     
-    # 코너 핀 모듈 초기화 - 비활성화 상태로 시작
+    # 코너 핀 모듈 초기화 추가
     try:
         if hasattr(context.object, "corner_pin"):
             print("Initializing corner pin settings...")
             cp = context.object.corner_pin
-            cp.enabled = False  # 처음에는 비활성화 상태로 시작
+            cp.enabled = False
             cp.top_left = (0.0, 1.0)
             cp.top_right = (1.0, 1.0)
             cp.bottom_left = (0.0, 0.0)
             cp.bottom_right = (1.0, 0.0)
             cp.preset_name = "Default"
             
-            # 코너 핀 노드 초기 설치는 필요하지만 활성화하지는 않음
+            # 코너 핀 노드 초기화
             try:
                 from . import corner_pin
-                # 노드 준비만 하고 실제 연결은 하지 않음
                 corner_pin.nodes.apply_corner_pin_to_projector(context.object)
             except ImportError:
                 print("Corner pin module not available")
@@ -704,196 +737,124 @@ class PROJECTOR_OT_create_projector(Operator):
         
         # 코너 핀 노드 초기화 (코드 중복을 방지하기 위해 init_projector 내에서 처리)
         
-        self.report({'INFO'}, "Created new projector")
         return {'FINISHED'}
 
 
 def update_projected_texture(proj_settings, context):
-    """투사 모드 변경 시 호출되는 단순화된 함수"""
-    # 무한 재귀 방지 플래그
-    if getattr(update_projected_texture, '_is_updating', False):
+    """ Update the projected output source. """
+    projector = get_projector(context)
+    if not projector:
+        return
+        
+    # 스팟라이트 확인
+    if not hasattr(projector, "children") or len(projector.children) == 0:
+        return
+        
+    spot = projector.children[0]
+    if not spot or not hasattr(spot.data, "node_tree"):
+        return
+        
+    root_tree = spot.data.node_tree
+    
+    # 주요 노드 찾기
+    group_node = root_tree.nodes.get('Group')
+    emission_node = root_tree.nodes.get('Emission')
+    light_output_node = None
+    for node in root_tree.nodes:
+        if node.bl_idname == 'ShaderNodeOutputLight':
+            light_output_node = node
+            break
+    
+    # 이미지 텍스처 노드 찾기
+    custom_tex_node = root_tree.nodes.get('Image Texture')
+    
+    if not all([group_node, emission_node, light_output_node]):
+        print("필수 노드를 찾을 수 없음")
         return
     
-    update_projected_texture._is_updating = True
+    # 코너 핀이 있는 경우 모드 변경 시 자동 비활성화
+    case = proj_settings.projected_texture
+    if hasattr(projector, 'corner_pin') and case != Textures.CUSTOM_TEXTURE.value:
+        if projector.corner_pin.enabled:
+            projector.corner_pin["enabled"] = False
+            
+    # 기존 연결 제거 (Emission 입력과 Light Output 입력만)
+    links_to_remove = []
+    for link in root_tree.links:
+        if link.to_node == emission_node and link.to_socket == emission_node.inputs[0]:
+            links_to_remove.append(link)
+        elif link.to_node == light_output_node:
+            links_to_remove.append(link)
     
-    try:
-        projector = get_projector(context)
-        if not projector:
-            return
-        
-        # 자식 확인
-        if not hasattr(projector, "children") or len(projector.children) == 0:
-            return
-        
-        spot = projector.children[0]
-        if not spot or not hasattr(spot.data, "node_tree"):
-            return
-        
-        node_tree = spot.data.node_tree
-        
-        # 노드 찾기
-        group_node = None
-        emission_node = None
-        image_texture_node = None
-        light_output_node = None
-        corner_pin_node = None
-        pixel_grid_node = None
-        
-        for node in node_tree.nodes:
-            if node.name == 'Group':
-                group_node = node
-            elif node.bl_idname == 'ShaderNodeEmission':
-                emission_node = node
-            elif node.bl_idname == 'ShaderNodeTexImage':
-                image_texture_node = node
-            elif node.bl_idname == 'ShaderNodeOutputLight':
-                light_output_node = node
-            elif node.name == 'Corner Pin':
-                corner_pin_node = node
-            elif node.name == 'pixel_grid':
-                pixel_grid_node = node
-        
-        if not all([group_node, emission_node, light_output_node]):
-            return
-        
-        # 모든 연결 제거하고 처음부터 다시 설정
-        for link in list(node_tree.links):
-            node_tree.links.remove(link)
-        
-        # 현재 모드
-        mode = proj_settings.projected_texture
-        
-        # 1. Checker / Color Grid 모드
-        if mode in [Textures.CHECKER.value, Textures.COLOR_GRID.value]:
-            # 코너 핀 비활성화
-            if hasattr(projector, 'corner_pin') and projector.corner_pin.enabled:
-                projector.corner_pin["enabled"] = False
+    for link in links_to_remove:
+        root_tree.links.remove(link)
+    
+    # 그룹 노드 트리와 출력 확인
+    group_tree = None
+    if group_node and group_node.node_tree:
+        group_tree = group_node.node_tree
+    else:
+        print("Group 노드 또는 노드 트리가 없음")
+        return
+    
+    # Group 노드의 출력 소켓 확인
+    color_output = None
+    for output in group_node.outputs:
+        if output.name == 'color' or output.type == 'RGBA':
+            color_output = output
+            break
+    
+    if not color_output:
+        print("Group 노드에 color 출력이 없음")
+        # 계속 진행 (Custom Texture 모드는 이 출력 없이도 작동 가능)
+    
+    # 각 모드별 처리
+    if case == Textures.CHECKER.value or case == Textures.COLOR_GRID.value:
+        # Checker 또는 Color Grid 모드: Group color -> Emission
+        if color_output:
+            root_tree.links.new(color_output, emission_node.inputs[0])
+            print(f"{case} 모드: Group -> Emission 연결 생성됨")
+        else:
+            print(f"{case} 모드: color 출력을 찾을 수 없어 연결 실패")
             
-            # Group color -> Emission
-            for output in group_node.outputs:
-                if output.name == 'color' or output.type == 'RGBA':
-                    for input in emission_node.inputs:
-                        if input.name == 'Color' or input.type == 'RGBA':
-                            node_tree.links.new(output, input)
-                            break
-                    break
-            
-            # 픽셀 그리드 설정
-            if pixel_grid_node:
-                # Group texture vector -> Pixel Grid Vector
-                for output in group_node.outputs:
-                    if output.name == 'texture vector' or output.type == 'VECTOR':
-                        for input in pixel_grid_node.inputs:
-                            if input.name == 'Vector' or input.type == 'VECTOR' or input == pixel_grid_node.inputs[1]:
-                                node_tree.links.new(output, input)
-                                break
-                        break
-                
-                # Emission -> Pixel Grid Shader
-                if len(pixel_grid_node.inputs) > 0 and len(emission_node.outputs) > 0:
-                    shader_input = None
-                    for input in pixel_grid_node.inputs:
-                        if input.type == 'SHADER' or input.name == 'Shader':
-                            shader_input = input
-                            break
-                    
-                    if not shader_input and len(pixel_grid_node.inputs) > 0:
-                        shader_input = pixel_grid_node.inputs[0]
-                    
-                    if shader_input:
-                        node_tree.links.new(emission_node.outputs[0], shader_input)
-            
-            # 최종 출력 연결
-            if proj_settings.show_pixel_grid and pixel_grid_node and len(pixel_grid_node.outputs) > 0:
-                node_tree.links.new(pixel_grid_node.outputs[0], light_output_node.inputs[0])
-            else:
-                node_tree.links.new(emission_node.outputs[0], light_output_node.inputs[0])
+        # 항상 Emission -> Light Output 연결
+        root_tree.links.new(emission_node.outputs[0], light_output_node.inputs[0])
+        print(f"{case} 모드: Emission -> Light Output 연결 생성됨")
         
-        # 2. Custom Texture 모드
-        else:  # Textures.CUSTOM_TEXTURE.value
-            # 코너 핀 활성화 여부 확인
-            has_corner_pin = hasattr(projector, 'corner_pin') and projector.corner_pin.enabled
-            
-            # Group texture vector -> 경로 설정
-            vector_output = None
-            for output in group_node.outputs:
-                if output.name == 'texture vector' or output.type == 'VECTOR':
-                    vector_output = output
-                    break
-            
-            if vector_output and image_texture_node:
-                vector_input = None
-                for input in image_texture_node.inputs:
-                    if input.name == 'Vector' or input.type == 'VECTOR':
-                        vector_input = input
-                        break
-                
-                if not vector_input and len(image_texture_node.inputs) > 0:
-                    vector_input = image_texture_node.inputs[0]
-                
-                if has_corner_pin and corner_pin_node:
-                    # Group -> Corner Pin -> Image Texture
-                    node_tree.links.new(vector_output, corner_pin_node.inputs[0])
-                    node_tree.links.new(corner_pin_node.outputs[0], vector_input)
-                    
-                    # 코너 값 설정
-                    try:
-                        corner_pin = projector.corner_pin
-                        corner_pin_node.inputs[1].default_value = (corner_pin.top_left[0], corner_pin.top_left[1], 0.0)
-                        corner_pin_node.inputs[2].default_value = (corner_pin.top_right[0], corner_pin.top_right[1], 0.0)
-                        corner_pin_node.inputs[3].default_value = (corner_pin.bottom_left[0], corner_pin.bottom_left[1], 0.0)
-                        corner_pin_node.inputs[4].default_value = (corner_pin.bottom_right[0], corner_pin.bottom_right[1], 0.0)
-                    except Exception as e:
-                        print(f"코너 값 설정 오류: {e}")
-                else:
-                    # Group -> Image Texture 직접 연결
-                    node_tree.links.new(vector_output, vector_input)
-            
+    elif case == Textures.CUSTOM_TEXTURE.value:
+        # Custom Texture 모드: Image Texture -> Emission
+        if custom_tex_node:
             # Image Texture -> Emission
-            if image_texture_node and emission_node:
-                color_output = None
-                for output in image_texture_node.outputs:
-                    if output.name == 'Color' or output.type == 'RGBA':
-                        color_output = output
-                        break
-                
-                if not color_output and len(image_texture_node.outputs) > 0:
-                    color_output = image_texture_node.outputs[0]
-                
-                color_input = None
-                for input in emission_node.inputs:
-                    if input.name == 'Color' or input.type == 'RGBA':
-                        color_input = input
-                        break
-                
-                if not color_input and len(emission_node.inputs) > 0:
-                    color_input = emission_node.inputs[0]
-                
-                if color_output and color_input:
-                    node_tree.links.new(color_output, color_input)
+            root_tree.links.new(custom_tex_node.outputs[0], emission_node.inputs[0])
+            print("Custom Texture 모드: Image Texture -> Emission 연결 생성됨")
             
-            # 픽셀 그리드 설정
-            if pixel_grid_node:
-                # Group texture vector -> Pixel Grid Vector
-                if vector_output:
-                    for input in pixel_grid_node.inputs:
-                        if input.name == 'Vector' or input.type == 'VECTOR' or input == pixel_grid_node.inputs[1]:
-                            node_tree.links.new(vector_output, input)
-                            break
+            # Group texture vector -> 이미지 또는 코너 핀 연결은 
+            # update_corner_pin 함수에서 처리됨
             
-            # 최종 출력 연결
-            if proj_settings.show_pixel_grid and pixel_grid_node and len(pixel_grid_node.outputs) > 0:
-                node_tree.links.new(pixel_grid_node.outputs[0], light_output_node.inputs[0])
-            else:
-                node_tree.links.new(emission_node.outputs[0], light_output_node.inputs[0])
-        
-        # 화면 갱신을 위해 이미지 업데이트
-        if mode in [Textures.CHECKER.value, Textures.COLOR_GRID.value]:
-            update_checker_color(proj_settings, context)
-        
-    finally:
-        # 플래그 해제
-        update_projected_texture._is_updating = False
+            # 항상 Emission -> Light Output 연결
+            root_tree.links.new(emission_node.outputs[0], light_output_node.inputs[0])
+            print("Custom Texture 모드: Emission -> Light Output 연결 생성됨")
+        else:
+            print("Custom Texture 모드: Image Texture 노드를 찾을 수 없음")
+    
+    # 픽셀 그리드 적용 여부에 따라 출력 연결 업데이트
+    if proj_settings.show_pixel_grid:
+        pixel_grid_node = root_tree.nodes.get('pixel_grid')
+        if pixel_grid_node:
+            # 기존 Light Output 연결 제거
+            for link in list(root_tree.links):
+                if link.to_node == light_output_node:
+                    root_tree.links.remove(link)
+            
+            # Pixel Grid -> Light Output 연결
+            root_tree.links.new(pixel_grid_node.outputs[0], light_output_node.inputs[0])
+            print("픽셀 그리드 활성화: Pixel Grid -> Light Output 연결 생성됨")
+    
+    # 화면 갱신을 위해 이미지 업데이트
+    if case == Textures.CHECKER.value:
+        update_checker_color(proj_settings, context)
+        print("체커 색상 업데이트됨")
+
 
 class PROJECTOR_OT_delete_projector(Operator):
     """Delete Projector"""
@@ -918,8 +879,7 @@ class PROJECTOR_OT_delete_projector(Operator):
 class ProjectorSettings(bpy.types.PropertyGroup):
     throw_ratio: bpy.props.FloatProperty(
         name="Throw Ratio",
-        min=0.1, max=10.0,  # 매우 넓은 하드 제한
-        soft_min=0.1, soft_max=10.0,  # 매우 넓은 소프트 제한
+        soft_min=0.4, soft_max=3,
         update=update_throw_ratio,
         subtype='FACTOR')
     power: bpy.props.FloatProperty(
@@ -940,15 +900,13 @@ class ProjectorSettings(bpy.types.PropertyGroup):
     h_shift: bpy.props.FloatProperty(
         name="Horizontal Shift",
         description="Horizontal Lens Shift",
-        min=-150, max=150,  # 넓은 하드 제한
-        soft_min=-150, soft_max=150,  # 넓은 소프트 제한
+        soft_min=-20, soft_max=20,
         update=update_lens_shift,
         subtype='PERCENTAGE')
     v_shift: bpy.props.FloatProperty(
         name="Vertical Shift",
         description="Vertical Lens Shift",
-        min=-150, max=150,  # 넓은 하드 제한
-        soft_min=-150, soft_max=150,  # 넓은 소프트 제한
+        soft_min=-20, soft_max=20,
         update=update_lens_shift,
         subtype='PERCENTAGE')
     projected_color: bpy.props.FloatVectorProperty(
@@ -965,173 +923,49 @@ class ProjectorSettings(bpy.types.PropertyGroup):
         default=False,
         update=update_pixel_grid)
 
-def apply_lens_data_to_projector(projector_obj, manufacturer, model):
-    """렌즈 데이터를 프로젝터 설정에 적용"""
-    from .lens_management.database import lens_db
-    
-    if not manufacturer or not model or not projector_obj:
-        return False
-    
-    # 렌즈 프로필 가져오기
-    profile = lens_db.get_lens_profile(manufacturer, model)
-    if not profile or 'specs' not in profile:
-        return False
-    
-    specs = profile['specs']
-    proj_settings = projector_obj.proj_settings
-    
-    # Throw Ratio 적용
-    if 'throw_ratio' in specs:
-        throw_ratio = specs['throw_ratio']
-        if isinstance(throw_ratio, dict) and 'default' in throw_ratio:
-            proj_settings.throw_ratio = throw_ratio['default']
-    
-    # 렌즈 시프트 적용
-    if 'lens_shift' in specs:
-        lens_shift = specs['lens_shift']
-        if 'h_shift_range' in lens_shift:
-            # 시프트 범위의 중간값 또는 0에 가까운 값으로 설정
-            h_min, h_max = lens_shift['h_shift_range']
-            proj_settings.h_shift = 0.0 if (h_min <= 0 <= h_max) else (h_min + h_max) / 2
-        
-        if 'v_shift_range' in lens_shift:
-            v_min, v_max = lens_shift['v_shift_range']
-            proj_settings.v_shift = 0.0 if (v_min <= 0 <= v_max) else (v_min + v_max) / 2
-    
-    return True
 
-def update_from_lens_profile(projector_obj, lens_profile):
+def safe_set_node_input(node, input_name, value, fallback_names=None):
     """
-    렌즈 프로필 데이터를 기반으로 프로젝터 설정 업데이트
-    """
-    if not projector_obj or not lens_profile or not hasattr(projector_obj, "proj_settings"):
-        return False
-        
-    proj_settings = projector_obj.proj_settings
+    노드 입력값을 안전하게 설정합니다. 입력 이름이 변경되었을 경우 대체 이름을 시도합니다.
     
-    # 기존 제한값 초기화
-    if "throw_ratio_min" in projector_obj:
-        del projector_obj["throw_ratio_min"]
-    if "throw_ratio_max" in projector_obj:
-        del projector_obj["throw_ratio_max"]
-    if "h_shift_min" in projector_obj:
-        del projector_obj["h_shift_min"]
-    if "h_shift_max" in projector_obj:
-        del projector_obj["h_shift_max"]
-    if "v_shift_min" in projector_obj:
-        del projector_obj["v_shift_min"]
-    if "v_shift_max" in projector_obj:
-        del projector_obj["v_shift_max"]
-    
-    # 프로필에서 specs 정보 추출
-    if 'specs' in lens_profile:
-        specs = lens_profile['specs']
-        
-        # Throw Ratio 업데이트
-        if 'throw_ratio' in specs:
-            throw_ratio = specs['throw_ratio']
-            if isinstance(throw_ratio, dict):
-                min_val = throw_ratio.get('min', 0.4)
-                max_val = throw_ratio.get('max', 3.0)
-                
-                # 제한 값 저장 (커스텀 속성으로)
-                projector_obj["throw_ratio_min"] = min_val
-                projector_obj["throw_ratio_max"] = max_val
-                
-                # 현재 값이 범위 내에 있는지 확인
-                current_throw = proj_settings.throw_ratio
-                if current_throw < min_val or current_throw > max_val:
-                    # 범위를 벗어나면 최소값으로 설정
-                    proj_settings.throw_ratio = min_val
-            
-        # 렌즈 시프트 업데이트
-        if 'lens_shift' in specs:
-            lens_shift = specs['lens_shift']
-            
-            # 수평 시프트
-            if 'h_shift_range' in lens_shift:
-                h_min, h_max = lens_shift['h_shift_range']
-                
-                # 제한 값 저장 (커스텀 속성으로)
-                projector_obj["h_shift_min"] = h_min
-                projector_obj["h_shift_max"] = h_max
-                
-                # 현재 값이 범위를 벗어나면 조정
-                current_h = proj_settings.h_shift
-                if current_h < h_min or current_h > h_max:
-                    # 중간값 또는 0으로 설정
-                    new_h = 0.0 if (h_min <= 0 <= h_max) else (h_min + h_max) / 2
-                    proj_settings.h_shift = new_h
-            
-            # 수직 시프트
-            if 'v_shift_range' in lens_shift:
-                v_min, v_max = lens_shift['v_shift_range']
-                
-                # 제한 값 저장 (커스텀 속성으로)
-                projector_obj["v_shift_min"] = v_min
-                projector_obj["v_shift_max"] = v_max
-                
-                # 현재 값이 범위를 벗어나면 조정
-                current_v = proj_settings.v_shift
-                if current_v < v_min or current_v > v_max:
-                    # 중간값 또는 0으로 설정
-                    new_v = 0.0 if (v_min <= 0 <= v_max) else (v_min + v_max) / 2
-                    proj_settings.v_shift = new_v
-    
-    # 설정 반영을 위해 함수 호출
-    update_throw_ratio(proj_settings, bpy.context)
-    update_lens_shift(proj_settings, bpy.context)
-    
-    return True
-
-def is_within_lens_limits(projector_obj, check_throw=True, check_shift=True):
-    """
-    현재 프로젝터 설정이 선택된 렌즈의 제한 범위 내에 있는지 확인
-    
-    Parameters:
-    projector_obj (Object): 프로젝터 객체
-    check_throw (bool): throw ratio 확인 여부
-    check_shift (bool): 렌즈 시프트 확인 여부
+    Args:
+        node: 대상 노드
+        input_name: 기본 입력 이름
+        value: 설정할 값
+        fallback_names: 대체 입력 이름 목록
     
     Returns:
-    dict: 각 설정별 범위 초과 여부 {'throw_ratio': bool, 'h_shift': bool, 'v_shift': bool}
+        성공 여부 (bool)
     """
-    result = {'throw_ratio': True, 'h_shift': True, 'v_shift': True}
+    if input_name in node.inputs:
+        node.inputs[input_name].default_value = value
+        return True
     
-    if not projector_obj or not hasattr(projector_obj, "proj_settings"):
-        return result
-        
-    proj_settings = projector_obj.proj_settings
+    # 기본 이름이 없을 경우 대체 이름 시도
+    if fallback_names:
+        for name in fallback_names:
+            if name in node.inputs:
+                node.inputs[name].default_value = value
+                return True
     
-    # 제한 값 가져오기
-    throw_min = projector_obj.get("throw_ratio_min", None)
-    throw_max = projector_obj.get("throw_ratio_max", None)
-    h_min = projector_obj.get("h_shift_min", None)
-    h_max = projector_obj.get("h_shift_max", None)
-    v_min = projector_obj.get("v_shift_min", None)
-    v_max = projector_obj.get("v_shift_max", None)
-    
-    # 제한 값이 없으면 모두 유효한 것으로 처리
-    if None in (throw_min, throw_max, h_min, h_max, v_min, v_max):
-        return result
-    
-    # Throw Ratio 확인
-    if check_throw:
-        current_throw = proj_settings.throw_ratio
-        if current_throw < throw_min or current_throw > throw_max:
-            result['throw_ratio'] = False
-    
-    # 수평 시프트 확인
-    if check_shift:
-        if proj_settings.h_shift < h_min or proj_settings.h_shift > h_max:
-            result['h_shift'] = False
-            
-    # 수직 시프트 확인
-    if check_shift:
-        if proj_settings.v_shift < v_min or proj_settings.v_shift > v_max:
-            result['v_shift'] = False
-    
-    return result
+    # 모든 시도 실패
+    print(f"Warning: Could not set input '{input_name}' on node '{node.name}'")
+    return False
+
+
+@bpy.app.handlers.persistent
+def check_projector_updates(scene):
+    """씬 업데이트 시 프로젝터 업데이트 확인"""
+    for obj in bpy.data.objects:
+        if obj.type == 'CAMERA' and obj.name.startswith('Projector'):
+            # 특정 속성이 업데이트 필요 표시가 있는지 확인
+            if hasattr(obj, "distance_settings") and obj.get("_needs_update", False):
+                # 업데이트 수행
+                from .distance_display import update_distance_display
+                update_distance_display(obj)
+                # 업데이트 완료 표시
+                obj["_needs_update"] = False
+
 
 def register():
     bpy.utils.register_class(ProjectorSettings)
