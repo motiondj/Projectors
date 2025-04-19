@@ -65,15 +65,15 @@ class PROJECTOR_PT_projector_settings(Panel):
             row.prop(proj_settings, 'throw_ratio')
             
             box.prop(proj_settings, 'power', text='Power')
+            
+            # 해상도 설정
             res_row = box.row()
             res_row.prop(proj_settings, 'resolution',
                         text='Resolution', icon='PRESET')
-            if proj_settings.projected_texture == Textures.CUSTOM_TEXTURE.value and proj_settings.use_custom_texture_res:
-                res_row.active = False
-                res_row.enabled = False
-            else:
-                res_row.active = True
-                res_row.enabled = True
+            
+            # 해상도 자동 감지 옵션
+            box.prop(proj_settings, 'use_custom_texture_res', 
+                     text='Use Image Resolution')
                 
             # Lens Shift
             col = box.column(align=True)
@@ -84,18 +84,15 @@ class PROJECTOR_PT_projector_settings(Panel):
             row = col.row()
             row.prop(proj_settings, 'v_shift', text='Vertical Shift')
                 
-            layout.prop(proj_settings,
-                        'projected_texture', text='Project')
-            # Pixel Grid
+            # 픽셀 그리드 옵션
             box.prop(proj_settings, 'show_pixel_grid')
 
-            # Custom Texture
-            if proj_settings.projected_texture == Textures.CUSTOM_TEXTURE.value:
-                box = layout.box()
-                box.prop(proj_settings, 'use_custom_texture_res')
-                node = get_projectors(context, only_selected=True)[
-                    0].children[0].data.node_tree.nodes['Image Texture']
-                box.template_image(node, 'image', node.image_user, compact=False)
+            # 텍스처 설정 섹션
+            box = layout.box()
+            box.label(text="Texture Settings")
+            # 이미지 텍스처 선택
+            node = projector.children[0].data.node_tree.nodes['Image Texture']
+            box.template_image(node, 'image', node.image_user, compact=False)
 
             # 렌즈 정보 표시
             if hasattr(projector, "lens_manager") and projector.lens_manager.has_lens_selected:
@@ -108,30 +105,21 @@ class PROJECTOR_PT_projector_settings(Panel):
                     row = box.row()
                     row.alert = True
                     row.label(text="Some values exceed lens limits", icon='ERROR')
+                    # 허용 범위 표시
+                    if not throw_ratio_valid and throw_min is not None and throw_max is not None:
+                        row = box.row()
+                        row.alert = True
+                        row.label(text=f"Throw Ratio limits: {throw_min:.2f} - {throw_max:.2f}")
                     
-
-class PROJECTOR_PT_projected_color(Panel):
-    bl_label = "Projected Color"
-    bl_parent_id = "OBJECT_PT_projector_n_panel"
-    bl_option = {'DEFAULT_CLOSED'}
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-
-    @classmethod
-    def poll(self, context):
-        """ Only show if projected texture is set to  'checker'."""
-        projector = context.object
-        return bool(get_projectors(context, only_selected=True)) and projector.proj_settings.projected_texture == Textures.CHECKER.value
-
-    def draw(self, context):
-        projector = context.object
-        layout = self.layout
-        layout.use_property_decorate = False
-        col = layout.column()
-        col.use_property_split = True
-        col.prop(projector.proj_settings, 'projected_color', text='Color')
-        col.operator('projector.change_color',
-                     icon='MODIFIER_ON', text='Random Color')
+                    if not h_shift_valid and h_min is not None and h_max is not None:
+                        row = box.row()
+                        row.alert = True
+                        row.label(text=f"H-Shift limits: {h_min:.1f}% - {h_max:.1f}%")
+                    
+                    if not v_shift_valid and v_min is not None and v_max is not None:
+                        row = box.row()
+                        row.alert = True
+                        row.label(text=f"V-Shift limits: {v_min:.1f}% - {v_max:.1f}%")
 
 
 def append_to_add_menu(self, context):
@@ -141,14 +129,12 @@ def append_to_add_menu(self, context):
 
 def register():
     bpy.utils.register_class(PROJECTOR_PT_projector_settings)
-    bpy.utils.register_class(PROJECTOR_PT_projected_color)
     # Register create in the blender add menu.
     bpy.types.VIEW3D_MT_light_add.append(append_to_add_menu)
     
     # 코너 핀 UI 연결
     try:
         from . import corner_pin
-        # corner_pin.panel.register()  # 이 부분은 제거 - corner_pin 모듈 자체에서 패널 등록
         print("Corner Pin UI connected")
     except ImportError:
         print("Corner Pin module not found")
@@ -159,5 +145,4 @@ def register():
 def unregister():
     # Register create in the blender add menu.
     bpy.types.VIEW3D_MT_light_add.remove(append_to_add_menu)
-    bpy.utils.unregister_class(PROJECTOR_PT_projected_color)
     bpy.utils.unregister_class(PROJECTOR_PT_projector_settings)

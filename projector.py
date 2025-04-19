@@ -15,8 +15,6 @@ log = logging.getLogger(name=__file__)
 
 
 class Textures(Enum):
-    CHECKER = 'checker_texture'
-    COLOR_GRID = 'color_grid_texture'
     CUSTOM_TEXTURE = 'custom_texture'
 
 
@@ -40,9 +38,7 @@ RESOLUTIONS = [
     ('1000x1000', 'Square (1000x1000) 1:1', '', 12)
 ]
 
-PROJECTED_OUTPUTS = [(Textures.CHECKER.value, 'Checker', '', 1),
-                     (Textures.COLOR_GRID.value, 'Color Grid', '', 2),
-                     (Textures.CUSTOM_TEXTURE.value, 'Custom Texture', '', 3)]
+PROJECTED_OUTPUTS = [(Textures.CUSTOM_TEXTURE.value, 'Select Texture', '', 1)]
 
 
 class PROJECTOR_OT_change_color_randomly(Operator):
@@ -475,12 +471,47 @@ def update_lens_shift(proj_settings, context):
 
 
 def update_resolution(proj_settings, context):
+    """해상도 변경 시 호출되는 함수"""
     projector = get_projector(context)
-    nodes = projector.children[0].data.node_tree.nodes['Group'].node_tree.nodes
-    # Change resolution image texture
-    nodes['Image Texture'].image = bpy.data.images[f'_proj.tex.{proj_settings.resolution}']
-    update_throw_ratio(proj_settings, context)
+    if not projector or not projector.children or len(projector.children) == 0:
+        return
+        
+    spot = projector.children[0]
+    if not spot or not spot.data or not spot.data.node_tree:
+        return
+        
+    # 이미지 텍스처 노드 찾기
+    image_texture_node = None
+    for node in spot.data.node_tree.nodes:
+        if node.bl_idname == 'ShaderNodeTexImage':
+            image_texture_node = node
+            break
+            
+    if not image_texture_node:
+        return
+        
+    # 선택된 해상도에 맞는 기본 텍스처 이미지로 변경
+    default_texture_name = f'_proj.tex.{proj_settings.resolution}'
+    if default_texture_name in bpy.data.images:
+        # 이전 이미지 저장
+        old_image = image_texture_node.image
+        
+        # 새 이미지 설정
+        image_texture_node.image = bpy.data.images[default_texture_name]
+        print(f"텍스처 이미지를 {default_texture_name}으로 변경")
+        
+        # 커스텀 이미지가 아닌 경우에만 이전 이미지 해제
+        if old_image and old_image.name.startswith('_proj.tex.'):
+            old_image.user_clear()
+    
+    # 픽셀 그리드 설정 업데이트
     update_pixel_grid(proj_settings, context)
+    
+    # 노드 연결 업데이트 확인
+    update_projected_texture(proj_settings, context)
+    
+    # throw ratio 업데이트 (해상도에 맞게 투사 비율 조정)
+    update_throw_ratio(proj_settings, context)
 
 
 def update_checker_color(proj_settings, context):
@@ -661,27 +692,37 @@ def create_projector(context):
 
 
 def init_projector(proj_settings, context):
-    # # Add custom properties to store projector settings on the camera obj.
+    # 기본 속성 설정
     proj_settings.throw_ratio = 0.8
     proj_settings.power = 1000.0
-    proj_settings.projected_texture = Textures.CHECKER.value
+    proj_settings.projected_texture = Textures.CUSTOM_TEXTURE.value  # 항상 Custom Texture로 설정
     proj_settings.h_shift = 0.0
     proj_settings.v_shift = 0.0
-    proj_settings.projected_color = random_color()
     proj_settings.resolution = '1920x1080'
     proj_settings.use_custom_texture_res = True
 
     # 프로젝터 객체에 is_projector 플래그 설정
     context.object['is_projector'] = True
     
-    # Init Projector
+    # 프로젝터 초기화
     update_throw_ratio(proj_settings, context)
     update_projected_texture(proj_settings, context)
     update_resolution(proj_settings, context)
-    update_checker_color(proj_settings, context)
     update_lens_shift(proj_settings, context)
     update_power(proj_settings, context)
     update_pixel_grid(proj_settings, context)
+    
+    # 기본 이미지 텍스처 설정 - 기본 테스트 패턴 이미지 설정
+    projector = get_projector(context)
+    if projector and hasattr(projector, "children") and len(projector.children) > 0:
+        spot = projector.children[0]
+        if spot and hasattr(spot.data, "node_tree"):
+            image_node = spot.data.node_tree.nodes.get('Image Texture')
+            if image_node:
+                # 기본 텍스처 이름 형식: '_proj.tex.1920x1080'
+                default_texture_name = f'_proj.tex.{proj_settings.resolution}'
+                if default_texture_name in bpy.data.images:
+                    image_node.image = bpy.data.images[default_texture_name]
     
     # 렌즈 관리 초기화
     if hasattr(context.object, "lens_manager"):
@@ -741,7 +782,7 @@ class PROJECTOR_OT_create_projector(Operator):
 
 
 def update_projected_texture(proj_settings, context):
-    """ Update the projected output source. """
+    """투사 출력 소스 업데이트"""
     projector = get_projector(context)
     if not projector:
         return
@@ -768,16 +809,10 @@ def update_projected_texture(proj_settings, context):
     # 이미지 텍스처 노드 찾기
     custom_tex_node = root_tree.nodes.get('Image Texture')
     
-    if not all([group_node, emission_node, light_output_node]):
+    if not all([group_node, emission_node, light_output_node, custom_tex_node]):
         print("필수 노드를 찾을 수 없음")
         return
     
-    # 코너 핀이 있는 경우 모드 변경 시 자동 비활성화
-    case = proj_settings.projected_texture
-    if hasattr(projector, 'corner_pin') and case != Textures.CUSTOM_TEXTURE.value:
-        if projector.corner_pin.enabled:
-            projector.corner_pin["enabled"] = False
-            
     # 기존 연결 제거 (Emission 입력과 Light Output 입력만)
     links_to_remove = []
     for link in root_tree.links:
@@ -790,52 +825,53 @@ def update_projected_texture(proj_settings, context):
         root_tree.links.remove(link)
     
     # 그룹 노드 트리와 출력 확인
-    group_tree = None
-    if group_node and group_node.node_tree:
-        group_tree = group_node.node_tree
-    else:
-        print("Group 노드 또는 노드 트리가 없음")
-        return
-    
-    # Group 노드의 출력 소켓 확인
-    color_output = None
+    texture_vector_output = None
     for output in group_node.outputs:
-        if output.name == 'color' or output.type == 'RGBA':
-            color_output = output
+        if output.name == 'texture vector':
+            texture_vector_output = output
             break
     
-    if not color_output:
-        print("Group 노드에 color 출력이 없음")
-        # 계속 진행 (Custom Texture 모드는 이 출력 없이도 작동 가능)
+    if not texture_vector_output:
+        print("texture vector 출력을 찾을 수 없음")
+        return
     
-    # 각 모드별 처리
-    if case == Textures.CHECKER.value or case == Textures.COLOR_GRID.value:
-        # Checker 또는 Color Grid 모드: Group color -> Emission
-        if color_output:
-            root_tree.links.new(color_output, emission_node.inputs[0])
-            print(f"{case} 모드: Group -> Emission 연결 생성됨")
-        else:
-            print(f"{case} 모드: color 출력을 찾을 수 없어 연결 실패")
-            
-        # 항상 Emission -> Light Output 연결
-        root_tree.links.new(emission_node.outputs[0], light_output_node.inputs[0])
-        print(f"{case} 모드: Emission -> Light Output 연결 생성됨")
+    # Custom Texture 모드: Image Texture -> Emission
+    # Image Texture -> Emission
+    root_tree.links.new(custom_tex_node.outputs[0], emission_node.inputs[0])
+    print("Image Texture -> Emission 연결 생성됨")
+    
+    # 항상 Emission -> Light Output 연결
+    root_tree.links.new(emission_node.outputs[0], light_output_node.inputs[0])
+    print("Emission -> Light Output 연결 생성됨")
+    
+    # 코너 핀이 활성화된 경우 처리
+    if hasattr(projector, 'corner_pin') and projector.corner_pin.enabled:
+        try:
+            from . import corner_pin
+            corner_pin.nodes.update_corner_pin_nodes(projector)
+            print("코너 핀 노드 업데이트됨")
+        except Exception as e:
+            print(f"코너 핀 업데이트 오류: {e}")
+    else:
+        # 코너 핀이 비활성화된 경우 직접 Group -> Image Texture 연결
+        vector_input = None
+        for input in custom_tex_node.inputs:
+            if input.name == 'Vector':
+                vector_input = input
+                break
         
-    elif case == Textures.CUSTOM_TEXTURE.value:
-        # Custom Texture 모드: Image Texture -> Emission
-        if custom_tex_node:
-            # Image Texture -> Emission
-            root_tree.links.new(custom_tex_node.outputs[0], emission_node.inputs[0])
-            print("Custom Texture 모드: Image Texture -> Emission 연결 생성됨")
+        if not vector_input and len(custom_tex_node.inputs) > 0:
+            vector_input = custom_tex_node.inputs[0]
+        
+        if vector_input:
+            # 기존 연결 제거
+            for link in list(root_tree.links):
+                if link.to_node == custom_tex_node and link.to_socket == vector_input:
+                    root_tree.links.remove(link)
             
-            # Group texture vector -> 이미지 또는 코너 핀 연결은 
-            # update_corner_pin 함수에서 처리됨
-            
-            # 항상 Emission -> Light Output 연결
-            root_tree.links.new(emission_node.outputs[0], light_output_node.inputs[0])
-            print("Custom Texture 모드: Emission -> Light Output 연결 생성됨")
-        else:
-            print("Custom Texture 모드: Image Texture 노드를 찾을 수 없음")
+            # Group -> Image Texture 연결
+            root_tree.links.new(texture_vector_output, vector_input)
+            print("Group -> Image Texture 연결 생성됨")
     
     # 픽셀 그리드 적용 여부에 따라 출력 연결 업데이트
     if proj_settings.show_pixel_grid:
@@ -849,11 +885,6 @@ def update_projected_texture(proj_settings, context):
             # Pixel Grid -> Light Output 연결
             root_tree.links.new(pixel_grid_node.outputs[0], light_output_node.inputs[0])
             print("픽셀 그리드 활성화: Pixel Grid -> Light Output 연결 생성됨")
-    
-    # 화면 갱신을 위해 이미지 업데이트
-    if case == Textures.CHECKER.value:
-        update_checker_color(proj_settings, context)
-        print("체커 색상 업데이트됨")
 
 
 class PROJECTOR_OT_delete_projector(Operator):
@@ -893,9 +924,9 @@ class ProjectorSettings(bpy.types.PropertyGroup):
         description="Select a Resolution for your Projector",
         update=update_resolution)
     use_custom_texture_res: bpy.props.BoolProperty(
-        name="Let Image Define Projector Resolution",
+        name="Use Image Resolution",
         default=True,
-        description="Use the resolution from the image as the projector resolution. Warning: After selecting a new image toggle this checkbox to update",
+        description="Use the resolution from the image as the projector resolution. When loading a new image, toggle this to update.",
         update=update_throw_ratio)
     h_shift: bpy.props.FloatProperty(
         name="Horizontal Shift",
@@ -909,13 +940,12 @@ class ProjectorSettings(bpy.types.PropertyGroup):
         soft_min=-20, soft_max=20,
         update=update_lens_shift,
         subtype='PERCENTAGE')
-    projected_color: bpy.props.FloatVectorProperty(
-        subtype='COLOR',
-        update=update_checker_color)
+    # projected_color 속성 제거 - Custom Texture만 사용하므로 필요 없음
+    # 기본값을 CUSTOM_TEXTURE로 고정
     projected_texture: bpy.props.EnumProperty(
-        items=PROJECTED_OUTPUTS,
-        default=Textures.CHECKER.value,
-        description="What do you to project?",
+        items=[(Textures.CUSTOM_TEXTURE.value, 'Custom Texture', '', 1)],
+        default=Textures.CUSTOM_TEXTURE.value,
+        description="Texture to project",
         update=update_throw_ratio)
     show_pixel_grid: bpy.props.BoolProperty(
         name="Show Pixel Grid",
@@ -971,13 +1001,13 @@ def register():
     bpy.utils.register_class(ProjectorSettings)
     bpy.utils.register_class(PROJECTOR_OT_create_projector)
     bpy.utils.register_class(PROJECTOR_OT_delete_projector)
-    bpy.utils.register_class(PROJECTOR_OT_change_color_randomly)
+    # PROJECTOR_OT_change_color_randomly 클래스 제거 - Custom Texture만 사용하므로 필요 없음
     bpy.types.Object.proj_settings = bpy.props.PointerProperty(
         type=ProjectorSettings)
 
 
 def unregister():
-    bpy.utils.unregister_class(PROJECTOR_OT_change_color_randomly)
+    # PROJECTOR_OT_change_color_randomly 클래스 제거
     bpy.utils.unregister_class(PROJECTOR_OT_delete_projector)
     bpy.utils.unregister_class(PROJECTOR_OT_create_projector)
     bpy.utils.unregister_class(ProjectorSettings)
