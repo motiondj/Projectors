@@ -713,7 +713,6 @@ class PROJECTOR_OT_create_projector(Operator):
 
 
 def update_projected_texture(proj_settings, context):
-    """투사 출력 소스를 업데이트"""
     # 무한 재귀 방지 플래그
     if getattr(update_projected_texture, '_is_updating', False):
         return
@@ -725,24 +724,37 @@ def update_projected_texture(proj_settings, context):
         if not projector:
             return
             
+        # 모드 변경 시 코너 핀 처리
+        case = proj_settings.projected_texture
+        
+        # 코너 핀이 있는 경우
+        if hasattr(projector, 'corner_pin'):
+            if case != Textures.CUSTOM_TEXTURE.value:
+                # Custom Texture가 아닐 때는 코너 핀 비활성화
+                projector.corner_pin.enabled = False
+            elif projector.corner_pin.enabled:
+                # Custom Texture이고 코너 핀이 활성화된 경우
+                from . import corner_pin
+                corner_pin.nodes.apply_corner_pin_to_projector(projector)
+            
         # 자식 객체 확인
         if not hasattr(projector, "children") or len(projector.children) == 0:
             return
             
-        # 스팟라이트 노드 트리 얻기
+        # 스팟라이트 노드 트리 확인
         spot = projector.children[0]
         if not spot or not hasattr(spot.data, "node_tree"):
             return
             
         node_tree = spot.data.node_tree
-        if not node_tree:
-            return
-            
+        
         # 주요 노드 찾기
-        group_node = None
+        group_node = None  # "!! Don't touch !!" 노드
         emission_node = None
         image_texture_node = None
         corner_pin_node = None
+        pixel_grid_node = None
+        light_output_node = None
         
         for node in node_tree.nodes:
             if node.name == 'Group':
@@ -753,104 +765,173 @@ def update_projected_texture(proj_settings, context):
                 image_texture_node = node
             elif node.name == 'Corner Pin':
                 corner_pin_node = node
+            elif node.name == 'pixel_grid':
+                pixel_grid_node = node
+            elif node.name == 'Light Output' or node.bl_idname == 'ShaderNodeOutputLight':
+                light_output_node = node
         
-        if not group_node or not emission_node:
+        if not group_node or not emission_node or not light_output_node:
+            return
+        
+        # 모든 관련 연결 제거
+        links_to_remove = []
+        
+        # 핵심 연결 제거
+        for link in node_tree.links:
+            # Group 노드 출력에서 출발하는 연결
+            if link.from_node == group_node:
+                links_to_remove.append(link)
+            
+            # Corner Pin 노드가 관련된 연결
+            elif corner_pin_node and (link.from_node == corner_pin_node or link.to_node == corner_pin_node):
+                links_to_remove.append(link)
+            
+            # Emission -> Light Output 또는 Pixel Grid -> Light Output 연결
+            elif (link.from_node == emission_node or (pixel_grid_node and link.from_node == pixel_grid_node)) and link.to_node == light_output_node:
+                links_to_remove.append(link)
+            
+            # Image Texture -> Emission 연결
+            elif image_texture_node and link.from_node == image_texture_node and link.to_node == emission_node:
+                links_to_remove.append(link)
+        
+        # 연결 제거
+        for link in links_to_remove:
+            node_tree.links.remove(link)
+        
+        # 소켓 찾기
+        texture_vector_output = None
+        color_output = None
+        
+        for output in group_node.outputs:
+            if output.name == 'texture vector':
+                texture_vector_output = output
+            elif output.name == 'color':
+                color_output = output
+        
+        if not texture_vector_output:
+            print("Texture vector output not found")
             return
         
         # 모드별 처리
         case = proj_settings.projected_texture
         
         if case == Textures.CUSTOM_TEXTURE.value:
-            # 코너 핀 기능이 활성화되어 있는지 확인
+            # 커스텀 텍스처 모드
+            
+            if not image_texture_node:
+                print("Image texture node not found")
+                return
+            
+            # 이미지 텍스처 연결을 위한 입력 찾기
+            vector_input = None
+            for input in image_texture_node.inputs:
+                if input.name == 'Vector':
+                    vector_input = input
+                    break
+            
+            if not vector_input and len(image_texture_node.inputs) > 0:
+                vector_input = image_texture_node.inputs[0]
+            
+            # 코너 핀 활성화 여부 확인
             has_corner_pin = hasattr(projector, 'corner_pin') and projector.corner_pin.enabled
             
-            if has_corner_pin and corner_pin_node and image_texture_node:
-                # 코너 핀 노드를 그룹과 이미지 텍스처 사이에 연결
-                
-                # 기존 연결 제거
-                for link in list(node_tree.links):
-                    # Group -> Image 직접 연결 제거
-                    if link.from_node == group_node and link.to_node == image_texture_node:
-                        node_tree.links.remove(link)
+            # 코너 핀 노드 생성 또는 재사용
+            if has_corner_pin:
+                if not corner_pin_node:
+                    # 코너 핀 노드가 없으면 생성
+                    from . import corner_pin
+                    corner_pin_node = node_tree.nodes.new('ShaderNodeGroup')
+                    corner_pin_node.name = 'Corner Pin'
                     
-                    # Corner Pin -> 다른 노드 연결 제거
-                    if link.from_node == corner_pin_node and link.to_node != image_texture_node:
-                        node_tree.links.remove(link)
-                
-                # 텍스처 벡터 출력 찾기
-                texture_vector_output = None
-                for output in group_node.outputs:
-                    if output.name == 'texture vector':
-                        texture_vector_output = output
-                        break
-                
-                # 벡터 입력 찾기
-                vector_input = None
-                for input in image_texture_node.inputs:
-                    if input.name == 'Vector':
-                        vector_input = input
-                        break
-                
-                if texture_vector_output and vector_input:
-                    # 연결 생성
-                    # Group -> Corner Pin
-                    if not any(link.from_node == group_node and link.to_node == corner_pin_node for link in node_tree.links):
-                        node_tree.links.new(texture_vector_output, corner_pin_node.inputs[0])
+                    node_group_name = 'CornerPinCorrection'
+                    if node_group_name not in bpy.data.node_groups:
+                        corner_pin.nodes.create_corner_pin_node_group()
                     
-                    # Corner Pin -> Image Texture
-                    if not any(link.from_node == corner_pin_node and link.to_node == image_texture_node for link in node_tree.links):
-                        node_tree.links.new(corner_pin_node.outputs[0], vector_input)
+                    corner_pin_node.node_tree = bpy.data.node_groups[node_group_name]
+                    
+                    # 노드 위치 설정
+                    corner_pin_node.location = (
+                        (group_node.location[0] + image_texture_node.location[0]) / 2,
+                        group_node.location[1] - 150
+                    )
                 
-                # 항상 Image Texture -> Emission 연결 확인
-                color_output = None
-                for output in image_texture_node.outputs:
-                    if output.name == 'Color':
-                        color_output = output
-                        break
-                
-                if color_output:
-                    for input in emission_node.inputs:
-                        if input.name == 'Color':
-                            node_tree.links.new(color_output, input)
-                            break
+                if vector_input:
+                    # 1. Group -> Corner Pin 연결
+                    node_tree.links.new(texture_vector_output, corner_pin_node.inputs[0])
+                    
+                    # 2. Corner Pin -> Image Texture 연결
+                    node_tree.links.new(corner_pin_node.outputs[0], vector_input)
+                    
+                    # 코너 값 설정
+                    try:
+                        corner_pin = projector.corner_pin
+                        corner_pin_node.inputs[1].default_value = (corner_pin.top_left[0], corner_pin.top_left[1], 0.0)
+                        corner_pin_node.inputs[2].default_value = (corner_pin.top_right[0], corner_pin.top_right[1], 0.0)
+                        corner_pin_node.inputs[3].default_value = (corner_pin.bottom_left[0], corner_pin.bottom_left[1], 0.0)
+                        corner_pin_node.inputs[4].default_value = (corner_pin.bottom_right[0], corner_pin.bottom_right[1], 0.0)
+                        print("Corner values set successfully")
+                    except Exception as e:
+                        print(f"Error setting corner values: {e}")
             
-            elif image_texture_node:
-                # 코너 핀이 비활성화된 경우 직접 연결
-                
-                # 텍스처 벡터와 벡터 입력 찾기
-                texture_vector_output = None
-                for output in group_node.outputs:
-                    if output.name == 'texture vector':
-                        texture_vector_output = output
-                        break
-                
-                vector_input = None
-                for input in image_texture_node.inputs:
-                    if input.name == 'Vector':
-                        vector_input = input
-                        break
-                
-                if texture_vector_output and vector_input:
-                    # 직접 연결: Group -> Image Texture
+            else:
+                # 코너 핀이 비활성화된 경우, Group -> Image Texture 직접 연결
+                if vector_input:
                     node_tree.links.new(texture_vector_output, vector_input)
-                
-                # Image Texture -> Emission 연결
-                color_output = None
-                for output in image_texture_node.outputs:
-                    if output.name == 'Color':
-                        color_output = output
+            
+            # 3. Image Texture -> Emission 연결
+            image_color_output = None
+            for output in image_texture_node.outputs:
+                if output.name == 'Color':
+                    image_color_output = output
+                    break
+            
+            if image_color_output:
+                emission_color_input = None
+                for input in emission_node.inputs:
+                    if input.name == 'Color':
+                        emission_color_input = input
                         break
                 
-                if color_output:
-                    for input in emission_node.inputs:
-                        if input.name == 'Color':
-                            node_tree.links.new(color_output, input)
-                            break
-        
-        else:
-            # 다른 모드(체커, 컬러 그리드 등)에 대한 처리는 그대로 유지
-            pass
+                if emission_color_input:
+                    node_tree.links.new(image_color_output, emission_color_input)
             
+            # 4. Emission -> Light Output 연결
+            node_tree.links.new(emission_node.outputs[0], light_output_node.inputs[0])
+            
+        elif case == Textures.CHECKER.value or case == Textures.COLOR_GRID.value:
+            # 체커 또는 컬러 그리드 모드
+            
+            # 1. Group color -> Emission 연결
+            if color_output:
+                emission_color_input = None
+                for input in emission_node.inputs:
+                    if input.name == 'Color':
+                        emission_color_input = input
+                        break
+                
+                if emission_color_input:
+                    node_tree.links.new(color_output, emission_color_input)
+            
+            # 2. Group texture vector -> Pixel Grid 연결
+            if pixel_grid_node:
+                pixel_grid_vector_input = None
+                for i, input in enumerate(pixel_grid_node.inputs):
+                    if input.name == 'Vector' or i == 1:  # 두 번째 입력이 Vector인 경우
+                        pixel_grid_vector_input = input
+                        break
+                
+                if pixel_grid_vector_input:
+                    node_tree.links.new(texture_vector_output, pixel_grid_vector_input)
+            
+            # 3. Emission -> Light Output 또는 Pixel Grid -> Light Output 연결
+            if proj_settings.show_pixel_grid and pixel_grid_node:
+                node_tree.links.new(pixel_grid_node.outputs[0], light_output_node.inputs[0])
+            else:
+                node_tree.links.new(emission_node.outputs[0], light_output_node.inputs[0])
+        
+        # 활성화된 모드의 연결 확인 및 디버그 정보 출력
+        print(f"Updated projected texture to {case}, Corner Pin: {hasattr(projector, 'corner_pin') and projector.corner_pin.enabled}")
+        
     finally:
         # 플래그 해제
         update_projected_texture._is_updating = False

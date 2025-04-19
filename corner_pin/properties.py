@@ -12,8 +12,36 @@ def update_corner_pin(self, context):
         return
     
     print(f"Updating corner pin nodes for {obj.name}")
-    from . import nodes
-    nodes.update_corner_pin_nodes(obj)
+    
+    # 현재 투사 모드 확인
+    if obj.proj_settings.projected_texture == 'custom_texture':
+        if self.enabled:
+            # 코너 핀 활성화 시 노드 연결 설정
+            from . import nodes
+            nodes.apply_corner_pin_to_projector(obj)
+        else:
+            # 코너 핀 비활성화 시 노드 우회
+            # 스팟 라이트 찾기
+            spot = None
+            for child in obj.children:
+                if child.type == 'LIGHT' and child.data.type == 'SPOT':
+                    spot = child
+                    break
+            
+            if spot and spot.data.node_tree:
+                node_tree = spot.data.node_tree
+                corner_pin_node = node_tree.nodes.get('Corner Pin')
+                
+                if corner_pin_node:
+                    # 코너 핀 노드 우회 함수 호출
+                    from . import nodes
+                    nodes.bypass_corner_pin_node(node_tree, corner_pin_node)
+    
+    # custom_texture가 아닌 경우 코너 핀은 작동하지 않음
+    elif self.enabled:
+        # 다른 텍스처 모드에서는 코너 핀 비활성화
+        self.enabled = False
+        print("Corner pin is not available for non-custom textures")
 
 class CornerPinProperties(bpy.types.PropertyGroup):
     """4코너 보정 기능에 필요한 속성들"""
