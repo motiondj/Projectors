@@ -245,7 +245,7 @@ def create_corner_pin_node_group():
     return node_group
 
 def integrate_corner_pin_with_projector_node_tree(projector_obj):
-    """프로젝터 노드 트리에 코너 핀 노드 통합"""
+    """프로젝터 노드 트리에 코너 핀 노드 통합 - 개선된 버전"""
     print(f"Integrating corner pin to projector node tree: {projector_obj.name}")
     
     if not projector_obj or projector_obj.type != 'CAMERA':
@@ -272,12 +272,15 @@ def integrate_corner_pin_with_projector_node_tree(projector_obj):
     # 필요한 노드 찾기
     group_node = None  # "!! Don't touch !!" 노드
     image_texture_node = None  # 이미지 텍스처 노드
+    emission_node = None  # Emission 노드
     
     for node in node_tree.nodes:
         if node.name == 'Group':  # "!! Don't touch !!" 노드
             group_node = node
         elif node.bl_idname == 'ShaderNodeTexImage':  # 이미지 텍스처 노드
             image_texture_node = node
+        elif node.bl_idname == 'ShaderNodeEmission':  # Emission 노드
+            emission_node = node
     
     if not group_node:
         print("  - Group node not found")
@@ -285,6 +288,10 @@ def integrate_corner_pin_with_projector_node_tree(projector_obj):
     
     if not image_texture_node:
         print("  - Image Texture node not found")
+        return False
+    
+    if not emission_node:
+        print("  - Emission node not found")
         return False
     
     # texture vector 출력 찾기
@@ -328,33 +335,53 @@ def integrate_corner_pin_with_projector_node_tree(projector_obj):
             create_corner_pin_node_group()
         
         corner_pin_node.node_tree = bpy.data.node_groups[node_group_name]
-    
-    # 기존 연결 제거
-    for link in list(node_tree.links):
-        # Group -> Image Texture 직접 연결 제거
-        if link.from_node == group_node and link.to_node == image_texture_node:
-            node_tree.links.remove(link)
-            print("  - Removed link: Group -> Image Texture")
         
-        # Corner Pin 관련 연결 제거
-        elif link.from_node == corner_pin_node or link.to_node == corner_pin_node:
-            node_tree.links.remove(link)
-            print("  - Removed link involving Corner Pin")
+        # 노드 위치 설정
+        corner_pin_node.location = (
+            (group_node.location[0] + image_texture_node.location[0]) / 2,
+            group_node.location[1] - 150
+        )
     
-    # 코너 핀 노드 위치 설정
-    corner_pin_node.location = (
-        (group_node.location[0] + image_texture_node.location[0]) / 2,
-        group_node.location[1] - 150
-    )
+    # 기존 연결 제거 - 선택적으로 제거
+    links_to_remove = []
     
-    # 새 연결 생성
-    # 1. Group -> Corner Pin
-    link1 = node_tree.links.new(texture_vector_output, corner_pin_node.inputs[0])
+    for link in node_tree.links:
+        # Group -> Image Texture 직접 연결만 제거 (중요한 연결만 제거)
+        if (link.from_node == group_node and 
+            link.from_socket == texture_vector_output and 
+            link.to_node == image_texture_node):
+            links_to_remove.append(link)
     
-    # 2. Corner Pin -> Image Texture
-    link2 = node_tree.links.new(corner_pin_node.outputs[0], vector_input)
+    for link in links_to_remove:
+        node_tree.links.remove(link)
+        print(f"  - Removed link: {link.from_node.name} -> {link.to_node.name}")
     
-    print(f"  - Created links: {link1 is not None}, {link2 is not None}")
+    # 새 연결이 필요한지 확인
+    needs_group_to_corner_pin = True
+    needs_corner_pin_to_image = True
+    
+    # 기존 연결 확인
+    for link in node_tree.links:
+        if (link.from_node == group_node and 
+            link.from_socket == texture_vector_output and 
+            link.to_node == corner_pin_node):
+            needs_group_to_corner_pin = False
+        
+        if (link.from_node == corner_pin_node and 
+            link.to_node == image_texture_node):
+            needs_corner_pin_to_image = False
+    
+    # 필요한 연결만 생성
+    link1 = None
+    link2 = None
+    
+    if needs_group_to_corner_pin:
+        link1 = node_tree.links.new(texture_vector_output, corner_pin_node.inputs[0])
+        print(f"  - Created link: Group -> Corner Pin: {link1 is not None}")
+    
+    if needs_corner_pin_to_image:
+        link2 = node_tree.links.new(corner_pin_node.outputs[0], vector_input)
+        print(f"  - Created link: Corner Pin -> Image Texture: {link2 is not None}")
     
     # 코너 값 설정
     corner_pin = projector_obj.corner_pin
@@ -367,10 +394,39 @@ def integrate_corner_pin_with_projector_node_tree(projector_obj):
     except Exception as e:
         print(f"  - Error setting corner values: {e}")
     
+    # Image Texture -> Emission 연결 확인
+    emission_color_input = None
+    for input in emission_node.inputs:
+        if input.name == 'Color':
+            emission_color_input = input
+            break
+    
+    if emission_color_input:
+        needs_image_to_emission = True
+        
+        for link in node_tree.links:
+            if (link.from_node == image_texture_node and 
+                link.to_node == emission_node and 
+                link.to_socket == emission_color_input):
+                needs_image_to_emission = False
+                break
+        
+        if needs_image_to_emission:
+            # Image -> Emission 연결 (Color)
+            image_color_output = None
+            for output in image_texture_node.outputs:
+                if output.name == 'Color':
+                    image_color_output = output
+                    break
+            
+            if image_color_output:
+                link3 = node_tree.links.new(image_color_output, emission_color_input)
+                print(f"  - Created link: Image Texture -> Emission: {link3 is not None}")
+    
     return True
 
 def apply_corner_pin_to_projector(projector_obj):
-    """프로젝터 객체에 4코너 보정 노드 적용"""
+    """프로젝터 객체에 4코너 보정 노드 적용 - 개선된 버전"""
     print(f"Applying corner pin to projector: {projector_obj.name if projector_obj else 'None'}")
     
     if not projector_obj or projector_obj.type != 'CAMERA':
@@ -381,8 +437,22 @@ def apply_corner_pin_to_projector(projector_obj):
         print("  - No corner_pin attribute")
         return False
     
+    # 프로젝션 모드 체크
+    if not hasattr(projector_obj, 'proj_settings') or projector_obj.proj_settings.projected_texture != 'custom_texture':
+        print("  - Not in custom texture mode, corner pin won't be applied")
+        projector_obj.corner_pin.enabled = False
+        return False
+    
     # 코너 핀 노드 그룹 통합
-    return integrate_corner_pin_with_projector_node_tree(projector_obj)
+    result = integrate_corner_pin_with_projector_node_tree(projector_obj)
+    
+    # 로그 메시지
+    if result:
+        print("  - Corner pin applied successfully")
+    else:
+        print("  - Failed to apply corner pin")
+    
+    return result
 
 def update_corner_pin_nodes(projector_obj):
     """코너 핀 노드의 입력값 업데이트 - 개선 버전"""
@@ -416,47 +486,70 @@ def update_corner_pin_nodes(projector_obj):
     if not corner_pin_node:
         print("No Corner Pin node found")
         if corner_pin.enabled:
+            # 코너 핀이 활성화된 경우, 노드를 생성하고 설정 시도
             return apply_corner_pin_to_projector(projector_obj)
         return False
     
-    # 코너 값 설정 (다양한 방법 시도)
-    methods_tried = []
+    # 코너 값 설정 성공 여부
     success = False
     
-    # 방법 1: 인덱스로 접근 (기본 방법)
     try:
-        print("Trying method 1: Accessing by index")
-        corner_pin_node.inputs[1].default_value = (corner_pin.top_left[0], corner_pin.top_left[1], 0.0)
-        corner_pin_node.inputs[2].default_value = (corner_pin.top_right[0], corner_pin.top_right[1], 0.0)
-        corner_pin_node.inputs[3].default_value = (corner_pin.bottom_left[0], corner_pin.bottom_left[1], 0.0)
-        corner_pin_node.inputs[4].default_value = (corner_pin.bottom_right[0], corner_pin.bottom_right[1], 0.0)
-        methods_tried.append("index")
-        success = True
-        print("- Method 1 successful")
+        # 먼저 노드에 올바른 입력 포트가 있는지 확인
+        if len(corner_pin_node.inputs) >= 5:
+            corner_pin_node.inputs[1].default_value = (corner_pin.top_left[0], corner_pin.top_left[1], 0.0)
+            corner_pin_node.inputs[2].default_value = (corner_pin.top_right[0], corner_pin.top_right[1], 0.0)
+            corner_pin_node.inputs[3].default_value = (corner_pin.bottom_left[0], corner_pin.bottom_left[1], 0.0)
+            corner_pin_node.inputs[4].default_value = (corner_pin.bottom_right[0], corner_pin.bottom_right[1], 0.0)
+            success = True
+            print("- Corner pin values updated successfully")
+        else:
+            print(f"- Corner pin node has insufficient inputs: {len(corner_pin_node.inputs)}")
+            # 노드 그룹이 예상과 다르게 구성되어 있을 수 있음
+            if corner_pin_node.node_tree and corner_pin_node.node_tree.name != 'CornerPinCorrection':
+                print(f"- Warning: Corner pin node has unexpected node tree: {corner_pin_node.node_tree.name}")
     except Exception as e:
-        print(f"- Method 1 failed: {e}")
-    
-    # 기타 방법들은 그대로 유지
+        print(f"- Error setting corner values: {e}")
     
     # 연결 확인 및 업데이트
     if success and projector_obj.proj_settings.projected_texture == 'custom_texture':
         # 커스텀 텍스처 모드에서 연결 확인
         has_valid_connection = False
-        custom_tex_node = node_tree.nodes.get('Image Texture')
+        custom_tex_node = None
+        
+        # 이미지 텍스처 노드 찾기
+        for node in node_tree.nodes:
+            if node.bl_idname == 'ShaderNodeTexImage':
+                custom_tex_node = node
+                break
         
         if custom_tex_node:
+            # Corner Pin -> Image Texture 연결 확인
             for link in node_tree.links:
                 if link.to_node == custom_tex_node and link.from_node == corner_pin_node:
                     has_valid_connection = True
                     break
             
-            if not has_valid_connection:
+            # Group -> Corner Pin 연결 확인
+            group_connected = False
+            group_node = node_tree.nodes.get('Group')
+            if group_node:
+                for link in node_tree.links:
+                    if link.from_node == group_node and link.to_node == corner_pin_node:
+                        group_connected = True
+                        break
+            
+            if not has_valid_connection or not group_connected:
                 # 연결 다시 수행
+                print("- Corner pin connections need to be reestablished")
                 try:
-                    from . import apply_corner_pin_to_projector
-                    apply_corner_pin_to_projector(projector_obj)
+                    # 이 경로는 safety check임 - 실제로는 정상 연결 유지를 위한 경로
+                    result = apply_corner_pin_to_projector(projector_obj)
+                    if result:
+                        print("- Corner pin connections reestablished successfully")
+                    else:
+                        print("- Failed to reestablish corner pin connections")
                 except Exception as e:
-                    print(f"Failed to reconnect corner pin: {e}")
+                    print(f"- Failed to reconnect corner pin: {e}")
     
     return success
 
@@ -480,28 +573,93 @@ def node_is_in_path(node_tree, node):
     return has_input_links and has_output_links
 
 def bypass_corner_pin_node(node_tree, node):
-    """코너 핀 노드를 우회하고 직접 연결"""
+    """코너 핀 노드를 우회하고 직접 연결
+    
+    Args:
+        node_tree: 노드 트리 객체
+        node: 우회할 코너 핀 노드
+    """
+    if not node_tree or not node:
+        print("Invalid node tree or node")
+        return
+    
+    print(f"Bypassing corner pin node: {node.name}")
+    
     # 입력과 출력 연결 찾기
-    input_links = []
-    output_links = []
+    input_links = []  # (from_node, from_socket, to_socket)
+    output_links = []  # (to_node, to_socket, from_socket)
     
     for link in node_tree.links:
         if link.to_node == node:
             input_links.append((link.from_node, link.from_socket, link.to_socket))
+            print(f"  - Found input link: {link.from_node.name} -> {node.name}")
         elif link.from_node == node:
             output_links.append((link.to_node, link.to_socket, link.from_socket))
+            print(f"  - Found output link: {node.name} -> {link.to_node.name}")
     
     # 모든 기존 링크 제거
+    links_removed = 0
     for link in list(node_tree.links):
         if link.to_node == node or link.from_node == node:
             node_tree.links.remove(link)
+            links_removed += 1
+    
+    print(f"  - Removed {links_removed} links")
     
     # 입력 노드와 출력 노드 직접 연결
     if input_links and output_links:
         for from_node, from_socket, _ in input_links:
             for to_node, to_socket, _ in output_links:
-                node_tree.links.new(from_socket, to_socket)
-                print(f"Bypassed corner pin: {from_node.name} > {to_node.name}")
+                # 각 입력 노드를 모든 출력 노드에 연결
+                new_link = node_tree.links.new(from_socket, to_socket)
+                print(f"  - Bypassed corner pin: {from_node.name} > {to_node.name}: {new_link is not None}")
+    else:
+        print("  - No links to bypass (missing input or output links)")
+    
+    # 일반적으로 !! Don't touch !! -> Image Texture 연결이 필요한 경우 처리
+    group_node = None
+    image_texture_node = None
+    
+    for n in node_tree.nodes:
+        if n.name == 'Group':
+            group_node = n
+        elif n.bl_idname == 'ShaderNodeTexImage':
+            image_texture_node = n
+    
+    if group_node and image_texture_node:
+        # texture vector 출력 찾기
+        texture_vector_output = None
+        for output in group_node.outputs:
+            if output.name == 'texture vector':
+                texture_vector_output = output
+                break
+        
+        if texture_vector_output:
+            # Vector 입력 찾기
+            vector_input = None
+            for input in image_texture_node.inputs:
+                if input.name == 'Vector':
+                    vector_input = input
+                    break
+            
+            if not vector_input and len(image_texture_node.inputs) > 0:
+                vector_input = image_texture_node.inputs[0]
+            
+            if vector_input:
+                # 이미 이 연결이 있는지 확인
+                direct_link_exists = False
+                for link in node_tree.links:
+                    if (link.from_node == group_node and 
+                        link.from_socket == texture_vector_output and 
+                        link.to_node == image_texture_node and 
+                        link.to_socket == vector_input):
+                        direct_link_exists = True
+                        break
+                
+                # 없으면 생성
+                if not direct_link_exists:
+                    link = node_tree.links.new(texture_vector_output, vector_input)
+                    print(f"  - Created fallback direct link: Group -> Image Texture: {link is not None}")
 
 def register():
     print("corner_pin.nodes.register() called")
